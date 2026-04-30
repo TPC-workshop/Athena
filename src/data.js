@@ -42,7 +42,6 @@ export const MGMT_TASKS = [
 export const WORKSHOP_TASKS = [
   { section:'Daily — all team',    n:'Fill glue pots',                            m:10,  role:'assistant' },
   { section:'Daily — all team',    n:'Clean kitchen',                             m:15,  role:'assistant' },
-  { section:'Daily — MDF priming', n:'Prime MDF sheets',                          m:20,  role:'assistant', hasQty:true },
   { section:'Maintenance',         n:'Clean table saw & planer',                  m:30,  role:'maker1'    },
   { section:'Maintenance',         n:'Replace extraction bags / clean extraction', m:60, role:'assistant' },
   { section:'Weekly — facilities', n:'Vacuum workshop floor',                     m:60,  role:'assistant' },
@@ -219,7 +218,7 @@ export function genMgmtTasks() {
     phase: 'Management',
     sugRole: 'manager',
     assignedRole: null,
-    done: false,
+    count: 0,
     needsTime: t.m === null,
   }));
 }
@@ -229,12 +228,9 @@ export function genWsTasks() {
     id: `ws|${t.n}`,
     n: t.n,
     m: t.m,
-    baseM: t.m,   // always the per-sheet/per-unit rate — never overwritten
     phase: t.section,
     sugRole: t.role,
     assignedRole: null,
-    done: false,
-    hasQty: t.hasQty || false,
-    qty: t.hasQty ? 1 : undefined,
+    count: 0,
   }));
 }

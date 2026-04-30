@@ -298,7 +298,7 @@ export default function App() {
   const wsDoneMins = wsTasks.reduce((a,t)=>a+(t.count||0)*(t.m||0),0);
   const mgmtAdHocMins = mgmtExtraTasks.filter(t=>t.done).reduce((a,t)=>a+(t.m||0),0);
   // Workshop ad hoc (incl. MDF priming) counts against workshop overhead, not production
-  const wsAdHocMins = extraTasks.filter(t=>t.done).reduce((a,t)=>a+(t.m||0),0);
+  const wsAdHocMins = extraTasks.reduce((a,t)=>a+(t.m||0),0);
 
   // Production capacity: total minus overhead budgets minus absence only
   const prodAvail = Math.max(0, totalAvail - totalOverheadBudget - absenceMins);

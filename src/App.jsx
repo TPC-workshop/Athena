@@ -23,31 +23,6 @@ async function apiSave(data) {
   });
 }
 
-function Login({ onAuth }) {
-  const [pw, setPw] = useState('');
-  const [err, setErr] = useState(false);
-  const check = () => {
-    if (pw === PASSWORD) { onAuth(); }
-    else { setErr(true); setPw(''); }
-  };
-  return (
-    <div style={{fontFamily:'Georgia,serif',minHeight:'100vh',background:'#f5f4f0',display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
-      <div style={{background:'#fff',border:'0.5px solid #ddd',borderRadius:12,padding:'2rem',width:'100%',maxWidth:340,textAlign:'center'}}>
-        <div style={{fontSize:22,letterSpacing:'0.06em',marginBottom:4}}>ATHENA</div>
-        <div style={{fontSize:10,color:'#aaa',fontStyle:'italic',marginBottom:24}}>Patron of the Artisan</div>
-        <input type="password" value={pw} onChange={e=>{setPw(e.target.value);setErr(false);}}
-          onKeyDown={e=>e.key==='Enter'&&check()}
-          placeholder="Password" autoFocus
-          style={{width:'100%',padding:'10px 12px',border:`1px solid ${err?'#dc2626':'#ccc'}`,borderRadius:6,fontFamily:'Georgia,serif',fontSize:16,marginBottom:8,outline:'none'}}/>
-        {err&&<div style={{fontSize:12,color:'#dc2626',marginBottom:8}}>Incorrect password</div>}
-        <button onClick={check}
-          style={{width:'100%',padding:'10px',background:'#1a1a1a',color:'#fff',border:'none',borderRadius:6,fontFamily:'Georgia,serif',fontSize:14,cursor:'pointer'}}>
-          Enter
-        </button>
-      </div>
-    </div>
-  );
-}
 
 const TaskRow = memo(function TaskRow({ t, src, activeRoles, onSet, budgets, assignedMins }) {
   const isDone=t.done, isAssigned=!!t.assignedRole;
@@ -119,7 +94,7 @@ const TaskSection = memo(function TaskSection({ title, color, tasks, src, active
 });
 
 export default function App() {
-  const [authed, setAuthed] = useState(false);
+  const [authed] = useState(true);
   const [mode, setMode] = useState('plan');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -149,7 +124,6 @@ export default function App() {
   const activeRoles = ROLE_DEFS.filter(r=>activeKeys.includes(r.key));
 
   useEffect(() => {
-    if (!authed) return;
     apiLoad().then(s => {
       if (s.monthName) setMonthName(s.monthName);
       if (s.workingDays) setWorkingDays(s.workingDays);
@@ -168,7 +142,7 @@ export default function App() {
       if (s.extraTasks) setExtraTasks(s.extraTasks);
       setLoading(false);
     }).catch(()=>setLoading(false));
-  }, [authed]);
+  }, []);
 
   const stateRef = useRef({});
   useEffect(() => {
@@ -176,7 +150,6 @@ export default function App() {
   });
 
   const triggerSave = useCallback(() => {
-    if (!authed) return;
     clearTimeout(saveTimer.current);
     setSaveMsg('Saving…');
     saveTimer.current = setTimeout(async () => {
@@ -186,7 +159,7 @@ export default function App() {
       setSaveMsg('✓ Saved');
       setTimeout(()=>setSaveMsg(''),3000);
     }, 1500);
-  }, [authed]);
+  }, []);
 
   useEffect(()=>{ if(!loading) triggerSave(); }, [monthName,workingDays,activeKeys,holiday,overheadAlloc,clients,cCount,unexpected,absence,dayDate,dayHrs,mgmtTasks,wsTasks,clientTasks,extraTasks]);
 
@@ -352,7 +325,7 @@ export default function App() {
   const capCol=atCap?'#b91c1c':nearCap?'#92400e':'#166534';
   const barCol=atCap?'#dc2626':nearCap?'#d97706':'#1D9E75';
 
-  if (!authed) return <Login onAuth={()=>setAuthed(true)}/>;
+
   if (loading) return <div style={{fontFamily:'Georgia,serif',textAlign:'center',padding:'3rem',color:'#aaa'}}>Loading Athena…</div>;
   if (mode==='progress') return (
     <div>

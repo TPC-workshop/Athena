@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, memo } from 'react';
-import { ROLE_DEFS, QTYS, PROD_TASKS, WORKSHOP_MONTH, getQty, rColor, rLabel, genClientTasks, genMgmtTasks, genWsTasks } from './data.js';
+import { ROLE_DEFS, QTYS, UNIT_TYPES, WORKSHOP_MONTH, getQty, rColor, rLabel, genClientTasks, genMgmtTasks, genWsTasks } from './data.js';
 import Progress from './Progress.jsx';
 
 const COLORS = ['#1D9E75','#7F77DD','#D85A30','#378ADD','#D4537E','#BA7517','#639922','#E24B4A','#0F6E56'];
@@ -38,7 +38,7 @@ function Login({ onAuth }) {
         <input type="password" value={pw} onChange={e=>{setPw(e.target.value);setErr(false);}}
           onKeyDown={e=>e.key==='Enter'&&check()}
           placeholder="Password" autoFocus
-          style={{width:'100%',padding:'10px 12px',border:`1px solid ${err?'#dc2626':'#ccc'}`,borderRadius:6,fontFamily:'Georgia,serif',fontSize:15,marginBottom:8,outline:'none'}}/>
+          style={{width:'100%',padding:'10px 12px',border:`1px solid ${err?'#dc2626':'#ccc'}`,borderRadius:6,fontFamily:'Georgia,serif',fontSize:16,marginBottom:8,outline:'none'}}/>
         {err&&<div style={{fontSize:12,color:'#dc2626',marginBottom:8}}>Incorrect password</div>}
         <button onClick={check}
           style={{width:'100%',padding:'10px',background:'#1a1a1a',color:'#fff',border:'none',borderRadius:6,fontFamily:'Georgia,serif',fontSize:14,cursor:'pointer'}}>
@@ -56,7 +56,18 @@ const TaskRow = memo(function TaskRow({ t, src, activeRoles, onSet, budgets, ass
     <div style={{display:'flex',alignItems:'center',gap:6,padding:'7px 0',borderBottom:'0.4px solid #f0f0f0',opacity:isDone?0.4:1,flexWrap:'wrap'}}>
       <input type="checkbox" checked={!!isDone} onChange={()=>onSet(src,t.id,{done:!isDone,assignedRole:isDone?t.assignedRole:null})}
         style={{width:18,height:18,cursor:'pointer',flexShrink:0}}/>
-      <span style={{flex:1,fontSize:13,textDecoration:isDone?'line-through':'none',minWidth:100}}>{t.n}</span>
+      <span style={{flex:1,fontSize:13,textDecoration:isDone?'line-through':'none',minWidth:100}}>
+        {t.n}{t.hasQty && t.qty > 1 ? ` ×${t.qty}` : ''}
+      </span>
+      {/* Sheet count input for hasQty tasks (e.g. MDF priming) */}
+      {t.hasQty && !isDone && (
+        <div style={{display:'flex',alignItems:'center',gap:4}}>
+          <label style={{fontSize:11,color:'#888',whiteSpace:'nowrap'}}>Sheets:</label>
+          <input type="number" value={t.qty||1} min="1" max="99"
+            style={{width:52,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:13}}
+            onChange={e=>{const qty=Math.max(1,parseInt(e.target.value)||1); onSet(src,t.id,{qty,m:(t.baseM||20)*qty});}}/>
+        </div>
+      )}
       {t.needsTime&&!isDone ? (
         <input type="number" placeholder="mins" defaultValue="" min="1"
           style={{width:60,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:13}}
@@ -87,8 +98,8 @@ const TaskRow = memo(function TaskRow({ t, src, activeRoles, onSet, budgets, ass
   );
 });
 
-const TaskSection = memo(function TaskSection({ title, color, tasks, src, activeRoles, onSet, showDone, budgets, assignedMins, children }) {
-  const [open, setOpen] = useState(true);
+const TaskSection = memo(function TaskSection({ title, color, tasks, src, activeRoles, onSet, showDone, budgets, assignedMins, defaultOpen, children }) {
+  const [open, setOpen] = useState(defaultOpen !== false);
   const visible = tasks.filter(t=>showDone||!t.done);
   return (
     <div style={{background:'#fff',border:'0.5px solid #ddd',borderRadius:8,marginBottom:'1rem',borderLeft:`3px solid ${color||'#888'}`,overflow:'hidden'}}>
@@ -119,6 +130,8 @@ export default function App() {
   const [monthName, setMonthName] = useState('');
   const [workingDays, setWorkingDays] = useState(21);
   const [holiday, setHoliday] = useState({manager:0,maker1:0,maker2:0,painter:0,assistant:0});
+  // NEW: per-person overhead allocation (hrs/month)
+  const [overheadAlloc, setOverheadAlloc] = useState({manager:0,maker1:0,maker2:0,painter:0,assistant:0});
   const [unexpected, setUnexpected] = useState([]);
   const [absence, setAbsence] = useState([]);
   const [clients, setClients] = useState([]);
@@ -142,6 +155,7 @@ export default function App() {
       if (s.workingDays) setWorkingDays(s.workingDays);
       if (s.activeKeys) setActiveKeys(s.activeKeys);
       if (s.holiday) setHoliday(s.holiday);
+      if (s.overheadAlloc) setOverheadAlloc(s.overheadAlloc);
       if (s.clients) setClients(s.clients);
       if (s.cCount) setCCount(s.cCount);
       if (s.unexpected) setUnexpected(s.unexpected);
@@ -158,7 +172,7 @@ export default function App() {
 
   const stateRef = useRef({});
   useEffect(() => {
-    stateRef.current = { monthName,workingDays,activeKeys,holiday,clients,cCount,unexpected,absence,dayDate,dayHrs,mgmtTasks,wsTasks,clientTasks,extraTasks };
+    stateRef.current = { monthName,workingDays,activeKeys,holiday,overheadAlloc,clients,cCount,unexpected,absence,dayDate,dayHrs,mgmtTasks,wsTasks,clientTasks,extraTasks };
   });
 
   const triggerSave = useCallback(() => {
@@ -174,30 +188,89 @@ export default function App() {
     }, 1500);
   }, [authed]);
 
-  useEffect(()=>{ if(!loading) triggerSave(); }, [monthName,workingDays,activeKeys,holiday,clients,cCount,unexpected,absence,dayDate,dayHrs,mgmtTasks,wsTasks,clientTasks,extraTasks]);
+  useEffect(()=>{ if(!loading) triggerSave(); }, [monthName,workingDays,activeKeys,holiday,overheadAlloc,clients,cCount,unexpected,absence,dayDate,dayHrs,mgmtTasks,wsTasks,clientTasks,extraTasks]);
 
+  // Base available hours per person (gross, after holiday)
   function getMonthHrs(key) {
     const rd = ROLE_DEFS.find(r=>r.key===key); if(!rd) return 0;
     const dpw = rd.daysPerWeek||5;
     return Math.max(0, rd.stdDay*(workingDays*dpw/5) - (parseFloat(holiday[key])||0));
   }
 
+  // IMPROVED capacity calculations
+  // Per-person overhead allocation reduces their production contribution
   const totalAvail = activeKeys.reduce((a,k)=>a+getMonthHrs(k)*60,0);
   const unexpMins = unexpected.reduce((a,u)=>a+(parseFloat(u.hrs)||0)*60,0);
   const absenceMins = absence.reduce((a,u)=>a+(parseFloat(u.hrs)||0)*60,0);
-  const prodAvail = Math.max(0, totalAvail - WORKSHOP_MONTH_MINS - unexpMins - absenceMins);
+
+  // Extra (ad hoc) tasks auto-reduce production capacity — summed here
+  const extraTaskMins = extraTasks.reduce((a,t)=>a+(t.m||0),0);
+
+  // Per-person overhead allocation total
+  const personOverheadMins = activeKeys.reduce((a,k)=>a+(parseFloat(overheadAlloc[k])||0)*60,0);
+
+  // The 48h workshop overhead pool minus what's already covered by per-person allocations
+  // (if person allocations cover more than 48h, pool overhead = 0, no double-count)
+  const workshopPoolMins = Math.max(0, WORKSHOP_MONTH_MINS - personOverheadMins);
+
+  // Production capacity: total available minus all deductions
+  const prodAvail = Math.max(0,
+    totalAvail
+    - workshopPoolMins       // remaining unallocated workshop overhead
+    - personOverheadMins     // per-person overhead allocations
+    - unexpMins              // manually entered unexpected work
+    - absenceMins            // absence
+    - extraTaskMins          // ad hoc tasks added in dispatch
+  );
+
+  // Overhead countdown: how much of the 48h pool has been consumed by done ws/mgmt/extra tasks
+  const overheadDoneMins = [
+    ...mgmtTasks.filter(t=>t.done),
+    ...wsTasks.filter(t=>t.done),
+    ...extraTasks.filter(t=>t.done),
+  ].reduce((a,t)=>a+(t.m||0),0);
+  const overheadRemainingMins = Math.max(0, WORKSHOP_MONTH_MINS - overheadDoneMins);
+  const overheadPct = Math.round((overheadDoneMins / WORKSHOP_MONTH_MINS) * 100);
+
   const totalOrder = clients.reduce((a,cl)=>{
-    let m=0;
-    const dq={...cl.qtys,dfront:parseInt(cl.qtys.draw)||0,spraybar:parseInt(cl.qtys.bar)||0};
-    for(const t of PROD_TASKS){if(t.q){m+=t.m*getQty(dq,t.q);}else m+=t.m;}
-    for(const b of(cl.bespoke||[]))m+=b.mins||0;
-    return a+m;
+    // Use genClientTasks so the correct task set (painted/waxed/egger) drives the estimate
+    const tasks = genClientTasks(cl);
+    return a + tasks.reduce((s,t)=>s+(t.m||0),0);
   },0);
   const capPct = prodAvail>0 ? Math.round(totalOrder/prodAvail*100) : 0;
   const atCap=capPct>=100, nearCap=capPct>=85;
   const remain = prodAvail-totalOrder;
 
-  const addClient = ()=>{ if(atCap)return; const col=COLORS[clients.length%COLORS.length]; setClients(p=>[...p,{id:cCount,col,name:'',date:'',qtys:Object.fromEntries(QTYS.map(([q])=>[q,0])),bespoke:[]}]); setCCount(p=>p+1); };
+  // Helper: compute % completion of a client order's tasks
+  function getOrderPct(clId) {
+    const tasks = clientTasks[clId]||[];
+    if(!tasks.length) return 0;
+    return Math.round(tasks.filter(t=>t.done).length / tasks.length * 100);
+  }
+
+  // Helper: ahead/behind status given target date and days in month
+  function getOrderStatus(cl) {
+    if(!cl.targetDate || !monthName) return null;
+    const target = new Date(cl.targetDate);
+    if(isNaN(target)) return null;
+    const today = new Date();
+    // Days elapsed in month so far
+    const monthStart = new Date(target.getFullYear(), target.getMonth(), 1);
+    const daysInMonth = new Date(target.getFullYear(), target.getMonth()+1, 0).getDate();
+    const daysElapsed = Math.max(0, Math.min(daysInMonth, Math.round((today - monthStart)/(1000*60*60*24))));
+    const daysToTarget = Math.max(0, Math.round((target - today)/(1000*60*60*24)));
+    const totalDays = Math.round((target - monthStart)/(1000*60*60*24));
+    if(totalDays <= 0) return null;
+    const expectedPct = Math.min(100, Math.round((daysElapsed / totalDays) * 100));
+    const actualPct = getOrderPct(cl.id);
+    const diff = actualPct - expectedPct;
+    if(actualPct >= 100) return { label:'Complete', color:'#166534', bg:'#f0fdf4', icon:'✓' };
+    if(diff >= 10) return { label:'Ahead', color:'#166534', bg:'#f0fdf4', icon:'▲', diff:Math.abs(diff) };
+    if(diff <= -10) return { label:'Behind', color:'#b91c1c', bg:'#fef2f2', icon:'▼', diff:Math.abs(diff), daysToTarget };
+    return { label:'On track', color:'#92400e', bg:'#fffbeb', icon:'→', diff:Math.abs(diff) };
+  }
+
+  const addClient = ()=>{ if(atCap)return; const col=COLORS[clients.length%COLORS.length]; setClients(p=>[...p,{id:cCount,col,name:'',date:'',targetDate:'',unitType:'painted',qtys:Object.fromEntries(QTYS.map(([q])=>[q,0])),bespoke:[]}]); setCCount(p=>p+1); };
   const uCl=(id,f,v)=>setClients(p=>p.map(c=>c.id===id?{...c,[f]:v}:c));
   const uQty=(id,q,v)=>setClients(p=>p.map(c=>c.id===id?{...c,qtys:{...c.qtys,[q]:parseInt(v)||0}}:c));
   const delCl=(id)=>{ setClients(p=>p.filter(c=>c.id!==id)); setClientTasks(p=>{const n={...p};delete n[id];return n;}); };
@@ -214,7 +287,13 @@ export default function App() {
     const existM=Object.fromEntries(mgmtTasks.map(t=>[t.id,t]));
     setMgmtTasks(genMgmtTasks().map(t=>existM[t.id]?{...t,m:existM[t.id].m,needsTime:existM[t.id].needsTime,assignedRole:existM[t.id].assignedRole,done:existM[t.id].done}:t));
     const existW=Object.fromEntries(wsTasks.map(t=>[t.id,t]));
-    setWsTasks(genWsTasks().map(t=>existW[t.id]?{...t,assignedRole:existW[t.id].assignedRole,done:existW[t.id].done}:t));
+    setWsTasks(genWsTasks().map(t=>{
+      if(!existW[t.id]) return t;
+      const ex=existW[t.id];
+      // Preserve sheet count and computed minutes for hasQty tasks
+      if(t.hasQty) return {...t,assignedRole:ex.assignedRole,done:ex.done,qty:ex.qty||1,m:ex.m||t.m};
+      return {...t,assignedRole:ex.assignedRole,done:ex.done};
+    }));
     const nct={};
     for(const cl of clients){
       const fresh=genClientTasks(cl);
@@ -266,7 +345,7 @@ export default function App() {
   const C={fontFamily:'Georgia,serif',fontSize:13,background:'#f5f4f0',minHeight:'100vh',color:'#1a1a1a'};
   const card={background:'#fff',border:'0.5px solid #ddd',borderRadius:8,padding:'1rem 1.25rem',marginBottom:'1rem'};
   const H={fontSize:9,fontWeight:'bold',textTransform:'uppercase',letterSpacing:'0.07em',color:'#888',marginBottom:8};
-  const inp={width:'100%',padding:'6px 8px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:14,background:'#fff'};
+  const inp={width:'100%',padding:'6px 8px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16,background:'#fff'};
   const btn={padding:'8px 16px',border:'0.5px solid #999',borderRadius:4,background:'#fff',fontFamily:'Georgia,serif',fontSize:13,cursor:'pointer'};
   const btnP={padding:'10px 22px',border:'none',borderRadius:4,background:'#1a1a1a',color:'#fff',fontFamily:'Georgia,serif',fontSize:13,cursor:'pointer'};
   const lbl={fontSize:11,color:'#888',display:'block',marginBottom:3};
@@ -280,7 +359,7 @@ export default function App() {
       <div style={{position:'fixed',top:0,right:0,zIndex:100,padding:'0.5rem 0.75rem'}}>
         <button onClick={()=>setMode('daily')} style={{...btn,fontSize:11,padding:'4px 12px',background:'#1a1a1a',color:'#fff',border:'none'}}>← Back</button>
       </div>
-      <Progress/>
+      <Progress clients={clients} clientTasks={clientTasks} monthName={monthName} getOrderStatus={getOrderStatus} getOrderPct={getOrderPct}/>
     </div>
   );
 
@@ -316,6 +395,7 @@ export default function App() {
           <div style={H}>Team this month</div>
           {ROLE_DEFS.map(rd=>{
             const active=activeKeys.includes(rd.key);
+            const ohAlloc = parseFloat(overheadAlloc[rd.key])||0;
             return(
               <div key={rd.key} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',border:`0.5px solid ${active?'#ddd':'#eee'}`,borderRadius:6,marginBottom:6,background:active?'#fff':'#fafaf8',opacity:active?1:0.5,flexWrap:'wrap'}}>
                 <input type="checkbox" checked={active} onChange={e=>setActiveKeys(p=>e.target.checked?[...p,rd.key]:p.filter(k=>k!==rd.key))} style={{width:18,height:18}}/>
@@ -324,15 +404,63 @@ export default function App() {
                 {active&&<>
                   <label style={{fontSize:11,color:'#888',whiteSpace:'nowrap'}}>Holiday (hrs):</label>
                   <input type="number" value={holiday[rd.key]} min="0" step="0.5" onChange={e=>setHoliday(p=>({...p,[rd.key]:parseFloat(e.target.value)||0}))}
-                    style={{width:60,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:13}}/>
-                  <span style={{fontSize:13,fontWeight:'bold',color:'#1a1a1a'}}>{getMonthHrs(rd.key).toFixed(1)}h</span>
+                    style={{width:60,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
+                  <label style={{fontSize:11,color:'#888',whiteSpace:'nowrap'}}>Overhead (hrs):</label>
+                  <input type="number" value={overheadAlloc[rd.key]} min="0" step="0.5"
+                    onChange={e=>setOverheadAlloc(p=>({...p,[rd.key]:parseFloat(e.target.value)||0}))}
+                    style={{width:60,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
+                  <span style={{fontSize:13,fontWeight:'bold',color:'#1a1a1a'}}>
+                    {Math.max(0, getMonthHrs(rd.key) - ohAlloc).toFixed(1)}h prod
+                  </span>
                 </>}
               </div>
             );
           })}
           <div style={{marginTop:8,fontSize:12,color:'#888',paddingTop:8,borderTop:'0.5px solid #eee'}}>
-            Total: <strong style={{color:'#1a1a1a'}}>{(totalAvail/60).toFixed(1)}h</strong>&nbsp;·&nbsp;Production: <strong style={{color:'#1a1a1a'}}>{(prodAvail/60).toFixed(1)}h</strong>
+            Total available: <strong style={{color:'#1a1a1a'}}>{(totalAvail/60).toFixed(1)}h</strong>
+            &nbsp;·&nbsp;Person overhead allocated: <strong style={{color:'#1a1a1a'}}>{(personOverheadMins/60).toFixed(1)}h</strong>
+            &nbsp;·&nbsp;Production: <strong style={{color:'#1a1a1a'}}>{(prodAvail/60).toFixed(1)}h</strong>
           </div>
+        </div>
+
+        {/* OVERHEAD COUNTDOWN */}
+        <div style={{...card,borderColor:'#b45309',borderWidth:'0.5px'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+            <div>
+              <div style={H}>Workshop overhead pool</div>
+              <div style={{fontSize:12,color:'#888'}}>48h monthly allocation — reduces as ws/mgmt/ad hoc tasks are completed</div>
+            </div>
+            <div style={{textAlign:'right'}}>
+              <div style={{fontSize:20,fontWeight:'bold',color: overheadDoneMins >= WORKSHOP_MONTH_MINS ? '#166534' : '#b45309'}}>
+                {(overheadRemainingMins/60).toFixed(1)}h
+              </div>
+              <div style={{fontSize:10,color:'#aaa'}}>remaining</div>
+            </div>
+          </div>
+          <div style={{height:10,background:'#f5f4f0',borderRadius:5,overflow:'hidden',marginBottom:6}}>
+            <div style={{
+              height:'100%',
+              width:`${Math.min(overheadPct,100)}%`,
+              background: overheadPct >= 100 ? '#1D9E75' : '#d97706',
+              borderRadius:5,
+              transition:'width 0.4s'
+            }}/>
+          </div>
+          <div style={{display:'flex',justifyContent:'space-between',fontSize:11,color:'#aaa'}}>
+            <span>{(overheadDoneMins/60).toFixed(1)}h completed ({overheadPct}%)</span>
+            <span>48h total</span>
+          </div>
+          {personOverheadMins > 0 && (
+            <div style={{marginTop:8,padding:'6px 10px',background:'#fffbeb',borderRadius:4,border:'0.5px solid #fde68a',fontSize:11,color:'#92400e'}}>
+              {(personOverheadMins/60).toFixed(1)}h pre-allocated to team members above
+              {workshopPoolMins < WORKSHOP_MONTH_MINS && ` · pool reduced to ${(workshopPoolMins/60).toFixed(1)}h unallocated`}
+            </div>
+          )}
+          {extraTaskMins > 0 && (
+            <div style={{marginTop:6,padding:'6px 10px',background:'#fef2f2',borderRadius:4,border:'0.5px solid #fecaca',fontSize:11,color:'#b91c1c'}}>
+              {(extraTaskMins/60).toFixed(1)}h ad hoc work added in dispatch — automatically deducted from production capacity
+            </div>
+          )}
         </div>
 
         <div style={card}>
@@ -345,7 +473,7 @@ export default function App() {
               {unexpected.map((u,i)=>(
                 <div key={i} style={{display:'flex',gap:5,marginBottom:5,alignItems:'center'}}>
                   <input placeholder="e.g. Returned item fix" value={u.desc} onChange={e=>uUnexp(i,'desc',e.target.value)} style={{...inp,flex:1}}/>
-                  <input type="number" value={u.hrs} min="0" step="0.5" onChange={e=>uUnexp(i,'hrs',e.target.value)} style={{width:52,padding:'4px 5px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:13}}/>
+                  <input type="number" value={u.hrs} min="0" step="0.5" onChange={e=>uUnexp(i,'hrs',e.target.value)} style={{width:52,padding:'4px 5px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
                   <span style={{fontSize:11,color:'#888'}}>h</span>
                   <button onClick={()=>delUnexp(i)} style={{...btn,padding:'3px 8px',fontSize:12,color:'#b91c1c',borderColor:'#fca5a5'}}>×</button>
                 </div>
@@ -359,7 +487,7 @@ export default function App() {
               {absence.map((u,i)=>(
                 <div key={i} style={{display:'flex',gap:5,marginBottom:5,alignItems:'center'}}>
                   <input placeholder="e.g. Maker off sick" value={u.desc} onChange={e=>uAbs(i,'desc',e.target.value)} style={{...inp,flex:1}}/>
-                  <input type="number" value={u.hrs} min="0" step="0.5" onChange={e=>uAbs(i,'hrs',e.target.value)} style={{width:52,padding:'4px 5px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:13}}/>
+                  <input type="number" value={u.hrs} min="0" step="0.5" onChange={e=>uAbs(i,'hrs',e.target.value)} style={{width:52,padding:'4px 5px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
                   <span style={{fontSize:11,color:'#888'}}>h</span>
                   <button onClick={()=>delAbs(i)} style={{...btn,padding:'3px 8px',fontSize:12,color:'#b91c1c',borderColor:'#fca5a5'}}>×</button>
                 </div>
@@ -388,36 +516,53 @@ export default function App() {
           {atCap&&<div style={{marginTop:10,fontSize:12,color:'#b91c1c',fontWeight:'bold'}}>⚠ At capacity — no further orders this month.</div>}
         </div>
 
-        {clients.map(cl=>(
-          <div key={cl.id} style={{...card,borderLeft:`3px solid ${cl.col}`,padding:0}}>
-            <div style={{padding:'0.75rem 1rem'}}>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10,flexWrap:'wrap',gap:8}}>
-                <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-                  <Dot c={cl.col}/>
-                  <input placeholder="Client name" value={cl.name} onChange={e=>uCl(cl.id,'name',e.target.value)} style={{fontSize:14,fontWeight:'bold',border:'none',background:'transparent',width:175,fontFamily:'Georgia,serif',outline:'none'}}/>
-                  <input placeholder="Due / week" value={cl.date} onChange={e=>uCl(cl.id,'date',e.target.value)} style={{fontSize:11,border:'none',background:'transparent',color:'#888',width:115,fontFamily:'Georgia,serif',outline:'none'}}/>
-                </div>
-                <button onClick={()=>delCl(cl.id)} style={{...btn,color:'#b91c1c',borderColor:'#fca5a5',padding:'4px 12px',fontSize:12}}>Remove</button>
-              </div>
-              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(105px,1fr))',gap:7,marginBottom:10}}>
-                {QTYS.map(([q,l])=>(
-                  <div key={q}><label style={lbl}>{l}</label><input type="number" value={cl.qtys[q]} min="0" style={inp} onChange={e=>uQty(cl.id,q,e.target.value)}/></div>
-                ))}
-              </div>
-              <div>
-                <div style={{fontSize:11,color:'#888',marginBottom:5}}>Bespoke <span style={{color:'#ccc'}}>— incl. shaker door priming if needed</span></div>
-                {cl.bespoke.map((b,i)=>(
-                  <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 60px auto',gap:6,marginBottom:5,alignItems:'center'}}>
-                    <input placeholder="e.g. Prime shaker doors" value={b.desc} style={inp} onChange={e=>uB(cl.id,i,'desc',e.target.value)}/>
-                    <input type="number" value={b.mins} style={inp} onChange={e=>uB(cl.id,i,'mins',e.target.value)}/>
-                    <button onClick={()=>setClients(p=>p.map(c=>c.id===cl.id?{...c,bespoke:c.bespoke.filter((_,j)=>j!==i)}:c))} style={{...btn,padding:'4px 8px',fontSize:12,color:'#b91c1c',borderColor:'#fca5a5'}}>×</button>
+        {clients.map(cl=>{
+          const status = getOrderStatus(cl);
+          return (
+            <div key={cl.id} style={{...card,borderLeft:`3px solid ${cl.col}`,padding:0}}>
+              <div style={{padding:'0.75rem 1rem'}}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10,flexWrap:'wrap',gap:8}}>
+                  <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                    <Dot c={cl.col}/>
+                    <input placeholder="Client name" value={cl.name} onChange={e=>uCl(cl.id,'name',e.target.value)} style={{fontSize:16,fontWeight:'bold',border:'none',background:'transparent',width:175,fontFamily:'Georgia,serif',outline:'none'}}/>
+                    <input placeholder="Due / week" value={cl.date} onChange={e=>uCl(cl.id,'date',e.target.value)} style={{fontSize:16,border:'none',background:'transparent',color:'#888',width:115,fontFamily:'Georgia,serif',outline:'none'}}/>
+                    <select value={cl.unitType||'painted'} onChange={e=>uCl(cl.id,'unitType',e.target.value)}
+                      style={{fontSize:12,padding:'3px 7px',border:'0.5px solid #ddd',borderRadius:4,fontFamily:'Georgia,serif',background:'#f9f9f7',color:'#555',outline:'none'}}>
+                      {UNIT_TYPES.map(ut=><option key={ut.key} value={ut.key}>{ut.label}</option>)}
+                    </select>
+                    <input type="date" value={cl.targetDate||''} onChange={e=>uCl(cl.id,'targetDate',e.target.value)}
+                      title="Target completion date for ahead/behind tracking"
+                      style={{fontSize:14,border:'0.5px solid #e5e7eb',background:'#f9f9f7',color:'#555',borderRadius:4,padding:'3px 6px',fontFamily:'Georgia,serif',outline:'none'}}/>
                   </div>
-                ))}
-                <button onClick={()=>addB(cl.id)} style={{...btn,padding:'4px 12px',fontSize:12}}>+ Add bespoke</button>
+                  <div style={{display:'flex',alignItems:'center',gap:8}}>
+                    {status&&(
+                      <span style={{fontSize:11,padding:'3px 8px',borderRadius:4,background:status.bg,color:status.color,border:`0.5px solid ${status.color}44`,whiteSpace:'nowrap',fontWeight:'bold'}}>
+                        {status.icon} {status.label}
+                      </span>
+                    )}
+                    <button onClick={()=>delCl(cl.id)} style={{...btn,color:'#b91c1c',borderColor:'#fca5a5',padding:'4px 12px',fontSize:12}}>Remove</button>
+                  </div>
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(105px,1fr))',gap:7,marginBottom:10}}>
+                  {QTYS.map(([q,l])=>(
+                    <div key={q}><label style={lbl}>{l}</label><input type="number" value={cl.qtys[q]} min="0" style={inp} onChange={e=>uQty(cl.id,q,e.target.value)}/></div>
+                  ))}
+                </div>
+                <div>
+                  <div style={{fontSize:11,color:'#888',marginBottom:5}}>Bespoke <span style={{color:'#ccc'}}>— incl. shaker door priming if needed</span></div>
+                  {cl.bespoke.map((b,i)=>(
+                    <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 60px auto',gap:6,marginBottom:5,alignItems:'center'}}>
+                      <input placeholder="e.g. Prime shaker doors" value={b.desc} style={inp} onChange={e=>uB(cl.id,i,'desc',e.target.value)}/>
+                      <input type="number" value={b.mins} style={inp} onChange={e=>uB(cl.id,i,'mins',e.target.value)}/>
+                      <button onClick={()=>setClients(p=>p.map(c=>c.id===cl.id?{...c,bespoke:c.bespoke.filter((_,j)=>j!==i)}:c))} style={{...btn,padding:'4px 8px',fontSize:12,color:'#b91c1c',borderColor:'#fca5a5'}}>×</button>
+                    </div>
+                  ))}
+                  <button onClick={()=>addB(cl.id)} style={{...btn,padding:'4px 12px',fontSize:12}}>+ Add bespoke</button>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         <div style={{display:'flex',gap:8,marginTop:'0.5rem',flexWrap:'wrap',alignItems:'center'}}>
           <button onClick={addClient} disabled={atCap} style={{...btn,opacity:atCap?0.4:1}}>{atCap?'⚠ At capacity':'+ Add client order'}</button>
@@ -449,7 +594,7 @@ export default function App() {
                 <div key={rd.key} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',background:'#fafaf8',border:`0.5px solid ${rd.color}44`,borderRadius:6,flexWrap:'wrap'}}>
                   <Dot c={rd.color}/><span style={{fontSize:13,minWidth:145}}>{rd.label}</span>
                   <input type="number" value={dayHrs[rd.key]} min="0" max="12" step="0.5" onChange={e=>setDayHrs(p=>({...p,[rd.key]:e.target.value}))}
-                    style={{width:62,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:13}}/>
+                    style={{width:62,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
                   <span style={{fontSize:11,color:'#888'}}>hrs</span>
                   {budget>0&&<>
                     <div style={{flex:1,minWidth:80,height:6,background:'#eee',borderRadius:3,overflow:'hidden'}}>
@@ -471,10 +616,10 @@ export default function App() {
 
         <TaskSection title="Workshop & maintenance tasks" color="#888" tasks={wsTasks} src="ws" activeRoles={activeRoles} onSet={setTaskProp} showDone={showDone} budgets={budgets} assignedMins={assignedMins}>
           <div style={{marginTop:10,paddingTop:10,borderTop:'0.5px solid #eee'}}>
-            <div style={{fontSize:11,color:'#888',marginBottom:6}}>Add ad hoc task</div>
+            <div style={{fontSize:11,color:'#888',marginBottom:6}}>Add ad hoc task <span style={{color:'#bbb'}}>— automatically deducted from production capacity in planning</span></div>
             <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
               <input placeholder="Task description" value={newExtra.n} onChange={e=>setNewExtra(p=>({...p,n:e.target.value}))} style={{...inp,flex:1,minWidth:160}}/>
-              <input type="number" placeholder="mins" value={newExtra.m} min="5" onChange={e=>setNewExtra(p=>({...p,m:parseInt(e.target.value)||0}))} style={{width:68,padding:'5px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:13}}/>
+              <input type="number" placeholder="mins" value={newExtra.m} min="5" onChange={e=>setNewExtra(p=>({...p,m:parseInt(e.target.value)||0}))} style={{width:68,padding:'5px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
               <span style={{fontSize:11,color:'#888'}}>min</span>
               <button onClick={()=>{if(!newExtra.n)return;setExtraTasks(p=>[...p,{id:`extra|${Date.now()}`,n:newExtra.n,m:newExtra.m,phase:'Ad hoc',sugRole:'manager',assignedRole:null,done:false}]);setNewExtra({n:'',m:30});}} style={{...btn,padding:'5px 14px',fontSize:12}}>Add</button>
             </div>
@@ -489,11 +634,24 @@ export default function App() {
 
         {clients.map(cl=>{
           const tasks=clientTasks[cl.id]||[];
-          const done=tasks.filter(t=>t.done).length;
+          const totalTasks=tasks.length;
+          const doneTasks=tasks.filter(t=>t.done).length;
           const asgn=tasks.filter(t=>t.assignedRole&&!t.done).length;
+          const pct=totalTasks>0?Math.round(doneTasks/totalTasks*100):0;
+          const isComplete=pct>=100&&totalTasks>0;
+          const status=getOrderStatus(cl);
           return(
-            <TaskSection key={cl.id} title={cl.name||'Unnamed'} color={cl.col} tasks={tasks} src={cl.id} activeRoles={activeRoles} onSet={setTaskProp} showDone={showDone} budgets={budgets} assignedMins={assignedMins}>
-              <div style={{fontSize:11,color:'#aaa',marginTop:6}}>{asgn} assigned · {done}/{tasks.length} done{cl.date?` · due ${cl.date}`:''}</div>
+            // AUTO-MINIMISE: defaultOpen=false when 100% complete
+            <TaskSection key={cl.id} title={cl.name||'Unnamed'} color={cl.col} tasks={tasks} src={cl.id} activeRoles={activeRoles} onSet={setTaskProp} showDone={showDone} budgets={budgets} assignedMins={assignedMins} defaultOpen={!isComplete}>
+              <div style={{fontSize:11,color:'#aaa',marginTop:6,display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                <span>{asgn} assigned · {doneTasks}/{totalTasks} done{cl.date?` · due ${cl.date}`:''}</span>
+                {status&&(
+                  <span style={{padding:'2px 8px',borderRadius:4,background:status.bg,color:status.color,border:`0.5px solid ${status.color}33`,fontWeight:'bold'}}>
+                    {status.icon} {status.label}{status.diff!==undefined?` (${status.diff}%)`:''}
+                  </span>
+                )}
+                {isComplete&&<span style={{color:'#166534',fontWeight:'bold'}}>✓ Complete — minimised</span>}
+              </div>
             </TaskSection>
           );
         })}

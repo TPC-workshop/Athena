@@ -289,7 +289,6 @@ export default function App() {
 
   const totalAvail = activeKeys.reduce((a,k)=>a+getMonthHrs(k)*60,0);
   const absenceMins = absence.reduce((a,u)=>a+(parseFloat(u.hrs)||0)*60,0);
-  const extraTaskMins = extraTasks.reduce((a,t)=>a+(t.m||0),0);
   const mgmtBudgetMins = (parseFloat(mgmtOverheadBudget)||0)*60;
   const wsBudgetMins = (parseFloat(wsOverheadBudget)||0)*60;
   const totalOverheadBudget = mgmtBudgetMins + wsBudgetMins;
@@ -298,8 +297,11 @@ export default function App() {
   const mgmtDoneMins = mgmtTasks.reduce((a,t)=>a+(t.count||0)*(t.m||0),0);
   const wsDoneMins = wsTasks.reduce((a,t)=>a+(t.count||0)*(t.m||0),0);
   const mgmtAdHocMins = mgmtExtraTasks.filter(t=>t.done).reduce((a,t)=>a+(t.m||0),0);
+  // Workshop ad hoc (incl. MDF priming) counts against workshop overhead, not production
+  const wsAdHocMins = extraTasks.filter(t=>t.done).reduce((a,t)=>a+(t.m||0),0);
 
-  const prodAvail = Math.max(0, totalAvail - totalOverheadBudget - absenceMins - extraTaskMins);
+  // Production capacity: total minus overhead budgets minus absence only
+  const prodAvail = Math.max(0, totalAvail - totalOverheadBudget - absenceMins);
 
   const totalOrder = clients.reduce((a,cl)=>{
     const tasks = genClientTasks(cl);
@@ -518,7 +520,7 @@ export default function App() {
         </div>
 
         <OverheadBar label="Management overhead" color="#7F77DD" budgetHrs={mgmtOverheadBudget} doneMins={mgmtDoneMins} adHocMins={mgmtAdHocMins}/>
-        <OverheadBar label="Workshop overhead" color="#888" budgetHrs={wsOverheadBudget} doneMins={wsDoneMins} adHocMins={0}/>
+        <OverheadBar label="Workshop overhead" color="#888" budgetHrs={wsOverheadBudget} doneMins={wsDoneMins} adHocMins={wsAdHocMins}/>
 
         <div style={{...card,borderColor:atCap?'#dc2626':nearCap?'#d97706':'#ddd',background:atCap?'#fef2f2':nearCap?'#fffbeb':'#fff'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
@@ -536,7 +538,6 @@ export default function App() {
               </div>
             ))}
           </div>
-          {extraTaskMins>0&&<div style={{marginTop:8,fontSize:11,color:'#92400e'}}>{(extraTaskMins/60).toFixed(1)}h production ad hoc tasks deducted from capacity.</div>}
           {atCap&&<div style={{marginTop:10,fontSize:12,color:'#b91c1c',fontWeight:'bold'}}>⚠ At capacity — no further orders this month.</div>}
         </div>
 
@@ -653,7 +654,7 @@ export default function App() {
 
         <CountSection title="Workshop & maintenance tasks" color="#888" tasks={wsTasks} src="ws" activeRoles={activeRoles} onSet={setTaskProp} budgets={budgets} assignedMins={assignedMins}>
           <div style={{marginTop:10,paddingTop:10,borderTop:'0.5px solid #eee'}}>
-            <div style={{fontSize:11,color:'#888',marginBottom:6}}>Workshop ad hoc <span style={{color:'#bbb'}}>— deducted from production capacity · incl. MDF priming</span></div>
+            <div style={{fontSize:11,color:'#888',marginBottom:6}}>Workshop ad hoc <span style={{color:'#bbb'}}>— deducted from workshop overhead when ticked · incl. MDF priming</span></div>
             <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginBottom:6}}>
               <input placeholder="e.g. Prime MDF sheets ×10 (200 min)" value={newExtra.n} onChange={e=>setNewExtra(p=>({...p,n:e.target.value}))} style={{...inp,flex:1,minWidth:160}}/>
               <input type="number" placeholder="mins" value={newExtra.m} min="5" onChange={e=>setNewExtra(p=>({...p,m:parseInt(e.target.value)||0}))} style={{width:68,padding:'5px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>

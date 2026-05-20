@@ -219,6 +219,7 @@ export default function App() {
   const saveTimer = useRef(null);
 
   const [activeKeys, setActiveKeys] = useState(['manager','maker1','assistant']);
+  const [extraRoles, setExtraRoles] = useState([]); // [{key,label,color,stdDay,daysPerWeek,holiday}]
   const [monthName, setMonthName] = useState('');
   const [workingDays, setWorkingDays] = useState(21);
   const [holiday, setHoliday] = useState({manager:0,maker1:0,maker2:0,painter:0,assistant:0});
@@ -239,7 +240,7 @@ export default function App() {
   const [newMgmtExtra, setNewMgmtExtra] = useState({n:'',m:30});
   const [activeSheet, setActiveSheet] = useState(null);
 
-  const activeRoles = ROLE_DEFS.filter(r=>activeKeys.includes(r.key));
+  const activeRoles = [...ROLE_DEFS.filter(r=>activeKeys.includes(r.key)), ...extraRoles];
 
   useEffect(() => {
     apiLoad().then(s => {
@@ -259,13 +260,14 @@ export default function App() {
       if (s.clientTasks) setClientTasks(s.clientTasks);
       if (s.extraTasks) setExtraTasks(s.extraTasks);
       if (s.mgmtExtraTasks) setMgmtExtraTasks(s.mgmtExtraTasks);
+      if (s.extraRoles) setExtraRoles(s.extraRoles);
       setLoading(false);
     }).catch(()=>setLoading(false));
   }, []);
 
   const stateRef = useRef({});
   useEffect(() => {
-    stateRef.current = { monthName,workingDays,activeKeys,holiday,mgmtOverheadBudget,wsOverheadBudget,clients,cCount,absence,dayDate,dayHrs,mgmtTasks,wsTasks,clientTasks,extraTasks,mgmtExtraTasks };
+    stateRef.current = { monthName,workingDays,activeKeys,holiday,extraRoles,mgmtOverheadBudget,wsOverheadBudget,clients,cCount,absence,dayDate,dayHrs,mgmtTasks,wsTasks,clientTasks,extraTasks,mgmtExtraTasks };
   });
 
   const triggerSave = useCallback(() => {
@@ -280,15 +282,24 @@ export default function App() {
     }, 1500);
   }, []);
 
-  useEffect(()=>{ if(!loading) triggerSave(); }, [monthName,workingDays,activeKeys,holiday,mgmtOverheadBudget,wsOverheadBudget,clients,cCount,absence,dayDate,dayHrs,mgmtTasks,wsTasks,clientTasks,extraTasks,mgmtExtraTasks]);
+  useEffect(()=>{ if(!loading) triggerSave(); }, [monthName,workingDays,activeKeys,holiday,extraRoles,mgmtOverheadBudget,wsOverheadBudget,clients,cCount,absence,dayDate,dayHrs,mgmtTasks,wsTasks,clientTasks,extraTasks,mgmtExtraTasks]);
 
   function getMonthHrs(key) {
+    // Check extra roles first
+    const er = extraRoles.find(r=>r.key===key);
+    if(er) {
+      const dpw = parseFloat(er.daysPerWeek)||5;
+      return Math.max(0, (parseFloat(er.stdDay)||7)*(workingDays*dpw/5) - (parseFloat(er.holiday)||0));
+    }
     const rd = ROLE_DEFS.find(r=>r.key===key); if(!rd) return 0;
     const dpw = rd.daysPerWeek||5;
     return Math.max(0, rd.stdDay*(workingDays*dpw/5) - (parseFloat(holiday[key])||0));
   }
 
-  const totalAvail = activeKeys.reduce((a,k)=>a+getMonthHrs(k)*60,0);
+  // All roles combined — standard + extra
+  const allRoleDefs = [...ROLE_DEFS, ...extraRoles];
+  const allActiveKeys = [...activeKeys, ...extraRoles.map(r=>r.key)];
+  const totalAvail = allActiveKeys.reduce((a,k)=>a+getMonthHrs(k)*60,0);
   const absenceMins = absence.reduce((a,u)=>a+(parseFloat(u.hrs)||0)*60,0);
   const mgmtBudgetMins = (parseFloat(mgmtOverheadBudget)||0)*60;
   const wsBudgetMins = (parseFloat(wsOverheadBudget)||0)*60;
@@ -311,6 +322,9 @@ export default function App() {
   const capPct = prodAvail>0 ? Math.round(totalOrder/prodAvail*100) : 0;
   const atCap=capPct>=100, nearCap=capPct>=85;
   const remain = prodAvail-totalOrder;
+
+  function erColor(k) { const er=extraRoles.find(r=>r.key===k); return er?er.color:rColor(k); }
+  function erLabel(k) { const er=extraRoles.find(r=>r.key===k); return er?er.label:rLabel(k); }
 
   function getOrderPct(clId) {
     const tasks = clientTasks[clId]||[];
@@ -478,8 +492,40 @@ export default function App() {
               </div>
             );
           })}
-          <div style={{marginTop:8,fontSize:12,color:'#888',paddingTop:8,borderTop:'0.5px solid #eee'}}>
-            Total available: <strong style={{color:'#1a1a1a'}}>{(totalAvail/60).toFixed(1)}h</strong>
+          {/* Extra (ad hoc) team members */}
+          {extraRoles.map((er,i)=>(
+            <div key={er.key} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',border:`0.5px solid ${er.color}44`,borderRadius:6,marginBottom:6,background:'#fff',flexWrap:'wrap'}}>
+              <Dot c={er.color}/>
+              <input value={er.label} onChange={e=>setExtraRoles(p=>p.map((x,j)=>j===i?{...x,label:e.target.value}:x))}
+                style={{fontSize:13,border:'none',background:'transparent',width:150,fontFamily:'Georgia,serif',outline:'none',fontWeight:'bold'}}
+                placeholder="Name"/>
+              <label style={{fontSize:11,color:'#888',whiteSpace:'nowrap'}}>h/day:</label>
+              <input type="number" value={er.stdDay} min="0.5" max="12" step="0.5"
+                onChange={e=>setExtraRoles(p=>p.map((x,j)=>j===i?{...x,stdDay:parseFloat(e.target.value)||7}:x))}
+                style={{width:52,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
+              <label style={{fontSize:11,color:'#888',whiteSpace:'nowrap'}}>d/wk:</label>
+              <input type="number" value={er.daysPerWeek} min="1" max="7" step="1"
+                onChange={e=>setExtraRoles(p=>p.map((x,j)=>j===i?{...x,daysPerWeek:parseFloat(e.target.value)||5}:x))}
+                style={{width:46,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
+              <label style={{fontSize:11,color:'#888',whiteSpace:'nowrap'}}>Holiday (hrs):</label>
+              <input type="number" value={er.holiday||0} min="0" step="0.5"
+                onChange={e=>setExtraRoles(p=>p.map((x,j)=>j===i?{...x,holiday:parseFloat(e.target.value)||0}:x))}
+                style={{width:52,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
+              <span style={{fontSize:13,fontWeight:'bold',color:'#1a1a1a'}}>{getMonthHrs(er.key).toFixed(1)}h</span>
+              <button onClick={()=>setExtraRoles(p=>p.filter((_,j)=>j!==i))}
+                style={{...btn,padding:'3px 8px',fontSize:12,color:'#b91c1c',borderColor:'#fca5a5',marginLeft:'auto'}}>×</button>
+            </div>
+          ))}
+          <div style={{marginTop:8,display:'flex',justifyContent:'space-between',alignItems:'center',paddingTop:8,borderTop:'0.5px solid #eee'}}>
+            <div style={{fontSize:12,color:'#888'}}>
+              Total available: <strong style={{color:'#1a1a1a'}}>{(totalAvail/60).toFixed(1)}h</strong>
+            </div>
+            <button onClick={()=>{
+              const colors=['#E24B4A','#2E8B8B','#7B4F9E','#C68B2F','#4A7C59'];
+              const col=colors[extraRoles.length%colors.length];
+              const key=`extra_${Date.now()}`;
+              setExtraRoles(p=>[...p,{key,label:'New team member',color:col,stdDay:7,daysPerWeek:5,holiday:0}]);
+            }} style={{...btn,padding:'4px 12px',fontSize:12}}>+ Add team member</button>
           </div>
         </div>
 

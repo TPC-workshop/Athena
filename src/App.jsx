@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { ROLE_DEFS, QTYS, UNIT_TYPES, getQty, rColor, rLabel, genClientTasks, genMgmtTasks, genWsTasks } from './data.js';
 import Progress from './Progress.jsx';
+import Queue from './Queue.jsx';
 
 const COLORS = ['#1D9E75','#7F77DD','#D85A30','#378ADD','#D4537E','#BA7517','#639922','#E24B4A','#0F6E56'];
 const PASSWORD = 'Ath3na-W0rk5h0p!';
@@ -211,7 +212,7 @@ function OverheadBar({ label, color, budgetHrs, doneMins, adHocMins }) {
 
 export default function App() {
   const [authed] = useState(true);
-  const [mode, setMode] = useState('plan');
+  const [mode, setMode] = useState('queue');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
@@ -438,7 +439,7 @@ export default function App() {
       </div>
 
       <div style={{display:'flex',gap:4,marginBottom:'1rem',background:'#fff',border:'0.5px solid #ddd',borderRadius:8,padding:4}}>
-        {[['plan','1 · Plan'],['daily','2 · Dispatch'],['sheets','3 · Sheets'],['progress','4 · Progress']].map(([m,l])=>(
+        {[['queue','0 · Queue'],['plan','1 · Plan'],['daily','2 · Dispatch'],['sheets','3 · Sheets'],['progress','4 · Progress']].map(([m,l])=>(
           <button key={m} onClick={()=>m==='daily'?startDaily():setMode(m)}
             style={{flex:1,padding:'10px 4px',border:'none',borderRadius:6,background:mode===m?'#1a1a1a':'transparent',color:mode===m?'#fff':'#888',fontFamily:'Georgia,serif',fontSize:12,cursor:'pointer',fontWeight:mode===m?'bold':'normal'}}>{l}</button>
         ))}
@@ -447,6 +448,8 @@ export default function App() {
       <div style={{marginBottom:'1rem'}}>
         <span style={{fontSize:11,color:saving?'#888':saveMsg.startsWith('✓')?'#166534':'#bbb'}}>{saveMsg||'Auto-saves to cloud'}</span>
       </div>
+
+      {mode==='queue'&&<Queue activeKeys={activeKeys} workingDays={workingDays} mgmtOverheadBudget={mgmtOverheadBudget} wsOverheadBudget={wsOverheadBudget}/>}
 
       {mode==='plan'&&<>
         <div style={card}>

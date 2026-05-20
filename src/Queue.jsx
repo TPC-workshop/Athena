@@ -274,6 +274,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
 
   const [activeKeys, setActiveKeys] = useState(propActiveKeys || ['manager', 'maker1', 'assistant']);
   const [extraRoles, setExtraRoles] = useState([]);
+  const [roleStreams, setRoleStreams] = useState({manager:'complex',maker1:'simple',maker2:'simple',painter:'overhead',assistant:'simple'});
   const [planHoliday, setPlanHoliday] = useState({});
   const [planMonthName, setPlanMonthName] = useState('');
   const [workingDaysDefault, setWorkingDaysDefault] = useState(propWorkingDays || 21);
@@ -291,6 +292,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
       if (plan.workingDays) setWorkingDaysDefault(plan.workingDays);
       if (plan.mgmtOverheadBudget !== undefined) setMgmtOverhead(plan.mgmtOverheadBudget);
       if (plan.wsOverheadBudget !== undefined) setWsOverhead(plan.wsOverheadBudget);
+      if (plan.roleStreams) setRoleStreams(plan.roleStreams);
       // Queue data — orders and settings only
       if (queue.simpleOrders) setSimpleOrders(queue.simpleOrders);
       if (queue.complexOrders) setComplexOrders(queue.complexOrders);
@@ -298,7 +300,6 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
       if (queue.qCount) setQCount(queue.qCount);
       if (queue.calendarMonths) setCalendarMonths(queue.calendarMonths);
       if (queue.overtimePool !== undefined) setOvertimePool(queue.overtimePool);
-      if (queue.complexRatio !== undefined) setComplexRatio(queue.complexRatio);
       if (queue.complexThreshold !== undefined) setComplexThreshold(queue.complexThreshold);
       if (queue.extraTeam) setExtraTeam(queue.extraTeam);
       setLoading(false);
@@ -312,7 +313,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     saveTimer.current = setTimeout(async () => {
       setSaving(true);
       // Save ONLY queue data — never touches Plan state
-      await apiSaveQueue({ simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexRatio, complexThreshold, extraTeam });
+      await apiSaveQueue({ simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexThreshold, extraTeam });
       setSaving(false);
       setSaveMsg('✓ Saved');
       setTimeout(() => setSaveMsg(''), 3000);
@@ -322,7 +323,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   useEffect(() => {
     if (!authed || loading) return;
     triggerSave.current();
-  }, [simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexRatio, complexThreshold, extraTeam]);
+  }, [simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexThreshold, extraTeam]);
 
   // ── Calendar ───────────────────────────────────────────────────────────────
 
@@ -398,84 +399,95 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   }
 
   // ── Scheduling ─────────────────────────────────────────────────────────────
-  // Shared capacity pool with configurable simple:complex ratio.
-  // Both streams draw from the same monthly production hours.
-  // Per month: complex slots = floor(capacity / (ratio+1)), simple slots = remainder.
-  // If one stream is empty, all capacity goes to the other.
+  // Simple and complex streams are fully independent — each has its own capacity pool.
+  // Simple capacity = simple team members (maker + assistant).
+  // Complex capacity = complex team members (manager + Harry).
+  // Overhead pool members add to total but are distributed proportionally.
+  // No ratio — streams don't share capacity.
 
-  function calcBothStreams() {
-    const months = sortedMonths();
-    const noCalendar = { simple: simpleOrders.map(o => ({ ...o, projectedMonth: 'No calendar set' })), complex: complexOrders.map(o => ({ ...o, projectedMonth: 'No calendar set' })) };
-    if (!months.length) return noCalendar;
-
-    const ratio = Math.max(1, parseInt(complexRatio) || 6);
-    const simpleQ = [...simpleOrders];
-    const complexQ = [...complexOrders];
-    const simpleResult = [];
-    const complexResult = [];
-
-    for (const month of months) {
-      const totalCap = getMonthProductionMins(month);
-      const hasComplex = complexQ.length > 0;
-      const hasSimple = simpleQ.length > 0;
-      if (!hasSimple && !hasComplex) continue;
-
-      // Split capacity: if both streams have orders, reserve a fraction for complex
-      // complex fraction = 1 / (ratio + 1), simple fraction = ratio / (ratio + 1)
-      // If only one stream has orders, it gets all capacity
-      let simpleCap = totalCap;
-      let complexCap = 0;
-      if (hasSimple && hasComplex) {
-        complexCap = Math.floor(totalCap / (ratio + 1));
-        simpleCap = totalCap - complexCap;
-      } else if (hasComplex && !hasSimple) {
-        complexCap = totalCap;
-        simpleCap = 0;
-      }
-
-      // Fill simple slots for this month
-      let simpleUsed = 0;
-      while (simpleQ.length > 0) {
-        const orderMins = calcOrderMins(simpleQ[0]);
-        if (simpleUsed + orderMins <= simpleCap) {
-          simpleUsed += orderMins;
-          simpleResult.push({ ...simpleQ.shift(), projectedMonth: month.label });
-        } else {
-          // Remaining simple capacity might fit in complex overflow if complex is done
-          break;
-        }
-      }
-
-      // Fill complex slots for this month
-      let complexUsed = 0;
-      while (complexQ.length > 0) {
-        const orderMins = calcOrderMins(complexQ[0]);
-        if (complexUsed + orderMins <= complexCap) {
-          complexUsed += orderMins;
-          complexResult.push({ ...complexQ.shift(), projectedMonth: month.label });
-        } else {
-          break;
-        }
-      }
-
-      // If simple finished early, overflow unused simple capacity to complex
-      const simpleOverflow = simpleCap - simpleUsed;
-      if (simpleOverflow > 0 && complexQ.length > 0) {
-        while (complexQ.length > 0) {
-          const orderMins = calcOrderMins(complexQ[0]);
-          if (complexUsed + orderMins <= complexCap + simpleOverflow) {
-            complexUsed += orderMins;
-            complexResult.push({ ...complexQ.shift(), projectedMonth: month.label });
-          } else break;
-        }
-      }
+  function getMonthSimpleMins(month) {
+    const wd = month.workingDays || workingDaysDefault;
+    let totalMins = 0;
+    // Simple stream roles
+    for (const key of activeKeys) {
+      const rd = ROLE_DEFS.find(r => r.key === key);
+      if (!rd) continue;
+      if ((roleStreams && roleStreams[key] !== 'simple')) continue;
+      const dpw = rd.daysPerWeek || 5;
+      const grossHrs = rd.stdDay * (wd * dpw / 5);
+      const accrual = getAccrualPerDay(rd) * wd;
+      const holidayHrs = (month.holiday && month.holiday[key] !== undefined) ? parseFloat(month.holiday[key]) : (isPlanMonth(month.label) && planHoliday[key] !== undefined ? parseFloat(planHoliday[key]) : accrual);
+      totalMins += Math.max(0, grossHrs - holidayHrs) * 60;
     }
+    for (const er of extraRoles) {
+      if ((er.stream || 'complex') !== 'simple') continue;
+      const dpw = parseFloat(er.daysPerWeek) || 5;
+      const grossHrs = (parseFloat(er.stdDay)||7) * (wd * dpw / 5);
+      totalMins += Math.max(0, grossHrs - (parseFloat(er.holiday)||0)) * 60;
+    }
+    // Overhead pool adds proportionally — split by raw hours ratio
+    for (const m of extraTeam) {
+      const hpw = parseFloat(m.hrsPerWeek) || 0;
+      if (hpw > 0) totalMins += (hpw * (wd / 5) * 60) * 0.5; // split 50/50 for queue purposes
+    }
+    const overheadMins = ((parseFloat(mgmtOverhead) || 0) + (parseFloat(wsOverhead) || 0)) * 60 * 0.5;
+    return Math.max(0, totalMins - overheadMins);
+  }
 
-    // Anything left over is beyond calendar
-    simpleQ.forEach(o => simpleResult.push({ ...o, projectedMonth: 'Beyond calendar' }));
-    complexQ.forEach(o => complexResult.push({ ...o, projectedMonth: 'Beyond calendar' }));
+  function getMonthComplexMins(month) {
+    const wd = month.workingDays || workingDaysDefault;
+    let totalMins = 0;
+    for (const key of activeKeys) {
+      const rd = ROLE_DEFS.find(r => r.key === key);
+      if (!rd) continue;
+      if ((roleStreams && roleStreams[key] !== 'complex')) continue;
+      const dpw = rd.daysPerWeek || 5;
+      const grossHrs = rd.stdDay * (wd * dpw / 5);
+      const accrual = getAccrualPerDay(rd) * wd;
+      const holidayHrs = (month.holiday && month.holiday[key] !== undefined) ? parseFloat(month.holiday[key]) : (isPlanMonth(month.label) && planHoliday[key] !== undefined ? parseFloat(planHoliday[key]) : accrual);
+      totalMins += Math.max(0, grossHrs - holidayHrs) * 60;
+    }
+    for (const er of extraRoles) {
+      if ((er.stream || 'complex') !== 'complex') continue;
+      const dpw = parseFloat(er.daysPerWeek) || 5;
+      const grossHrs = (parseFloat(er.stdDay)||7) * (wd * dpw / 5);
+      totalMins += Math.max(0, grossHrs - (parseFloat(er.holiday)||0)) * 60;
+    }
+    for (const m of extraTeam) {
+      const hpw = parseFloat(m.hrsPerWeek) || 0;
+      if (hpw > 0) totalMins += (hpw * (wd / 5) * 60) * 0.5;
+    }
+    const overheadMins = ((parseFloat(mgmtOverhead) || 0) + (parseFloat(wsOverhead) || 0)) * 60 * 0.5;
+    return Math.max(0, totalMins - overheadMins);
+  }
 
-    return { simple: simpleResult, complex: complexResult };
+  function calcStream(orders, getCapFn) {
+    const months = sortedMonths();
+    if (!months.length) return orders.map(o => ({ ...o, projectedMonth: 'No calendar set' }));
+    const result = [];
+    const queue = [...orders];
+    let monthIdx = 0;
+    let usedMins = 0;
+
+    for (const order of queue) {
+      const orderMins = calcOrderMins(order);
+      let allocated = false;
+      while (monthIdx < months.length) {
+        const cap = getCapFn(months[monthIdx]);
+        const available = cap - usedMins;
+        if (available >= orderMins) {
+          usedMins += orderMins;
+          result.push({ ...order, projectedMonth: months[monthIdx].label });
+          allocated = true;
+          break;
+        } else {
+          monthIdx++;
+          usedMins = 0;
+        }
+      }
+      if (!allocated) result.push({ ...order, projectedMonth: 'Beyond calendar' });
+    }
+    return result;
   }
 
   function calcLeadTimeWeeks(scheduled) {
@@ -487,7 +499,8 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     return Math.max(0, weeks);
   }
 
-  const { simple: scheduledSimple, complex: scheduledComplex } = calcBothStreams();
+  const scheduledSimple = calcStream(simpleOrders, getMonthSimpleMins);
+  const scheduledComplex = calcStream(complexOrders, getMonthComplexMins);
   const simpleLead = calcLeadTimeWeeks(scheduledSimple);
   const complexLead = calcLeadTimeWeeks(scheduledComplex);
   const financeTotal = financeOrders.reduce((a, o) => a + calcOrderMins(o), 0);
@@ -700,17 +713,8 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
         {/* Queue settings */}
         <div style={{ background: '#fff', border: '0.5px solid #ddd', borderRadius: 8, padding: '0.85rem 1rem', marginBottom: '1rem' }}>
           <div style={{ fontSize: 9, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.07em', color: '#888', marginBottom: 10 }}>Queue settings</div>
+          <div style={{ fontSize: 11, color: '#aaa', marginBottom: 10 }}>Simple and complex streams run independently — each uses its own team capacity from Plan settings.</div>
           <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-            <div>
-              <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 3 }}>Simple : complex ratio</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <input type="number" value={complexRatio} min="1" max="20" step="1"
-                  style={{ width: 58, padding: '4px 8px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', fontSize: 16 }}
-                  onChange={e => setComplexRatio(Math.max(1, parseInt(e.target.value) || 6))} />
-                <span style={{ fontSize: 12, color: '#888' }}>simple orders per complex</span>
-              </div>
-              <div style={{ fontSize: 10, color: '#aaa', marginTop: 3 }}>Capacity split per month: {Math.round(complexRatio/(complexRatio+1)*100)}% simple · {Math.round(1/(complexRatio+1)*100)}% complex</div>
-            </div>
             <div>
               <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 3 }}>Complexity threshold (hrs)</label>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

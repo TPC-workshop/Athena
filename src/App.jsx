@@ -526,17 +526,6 @@ export default function App() {
 
         <div style={card}>
           <div style={H}>Team this month</div>
-          <div style={{display:'grid',gridTemplateColumns:'auto 1fr',gap:'0 8px',fontSize:10,color:'#aaa',marginBottom:6,paddingBottom:4,borderBottom:'0.5px solid #f0f0f0'}}>
-            <span/>
-            <div style={{display:'flex',gap:8}}>
-              <span style={{minWidth:140}}>Name</span>
-              <span style={{minWidth:52}}>h/day</span>
-              <span style={{minWidth:46}}>d/wk</span>
-              <span style={{minWidth:60}}>Holiday h</span>
-              <span style={{minWidth:60}}>Avail</span>
-              <span>Stream</span>
-            </div>
-          </div>
           {ROLE_DEFS.map(rd=>{
             const active=activeKeys.includes(rd.key);
             const rh=roleHours[rd.key]||{};
@@ -545,25 +534,34 @@ export default function App() {
             const stream=roleStreams[rd.key]||'simple';
             const streamColors={'simple':'#1D9E75','complex':'#7F77DD','overhead':'#BA7517'};
             return(
-              <div key={rd.key} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',border:`0.5px solid ${active?rd.color+'44':'#eee'}`,borderRadius:6,marginBottom:6,background:active?'#fff':'#fafaf8',opacity:active?1:0.45,flexWrap:'wrap'}}>
+              <div key={rd.key} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',border:`0.5px solid ${active?rd.color+'33':'#eee'}`,borderRadius:6,marginBottom:6,background:active?'#fff':'#fafaf8',opacity:active?1:0.45,flexWrap:'wrap'}}>
                 <input type="checkbox" checked={active} onChange={e=>setActiveKeys(p=>e.target.checked?[...p,rd.key]:p.filter(k=>k!==rd.key))} style={{width:18,height:18}}/>
                 <Dot c={rd.color}/>
-                <span style={{fontSize:13,minWidth:140,fontWeight:'500'}}>{rd.label}</span>
+                <span style={{fontSize:13,minWidth:150}}>{rd.label}</span>
                 {active&&<>
-                  <input type="number" value={curStdDay} min="0.5" max="12" step="0.5"
-                    onChange={e=>setRoleHours(p=>({...p,[rd.key]:{...p[rd.key],stdDay:parseFloat(e.target.value)||rd.stdDay}}))}
-                    style={{width:52,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
-                  <input type="number" value={curDpw} min="1" max="7" step="0.5"
-                    onChange={e=>setRoleHours(p=>({...p,[rd.key]:{...p[rd.key],daysPerWeek:parseFloat(e.target.value)||5}}))}
-                    style={{width:46,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
-                  <input type="number" value={holiday[rd.key]||0} min="0" step="0.5"
-                    onChange={e=>setHoliday(p=>({...p,[rd.key]:parseFloat(e.target.value)||0}))}
-                    style={{width:60,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
-                  <span style={{fontSize:12,fontWeight:'bold',color:'#1a1a1a',minWidth:52}}>{getMonthHrs(rd.key).toFixed(1)}h</span>
-                  <div style={{display:'flex',gap:3}}>
+                  <div style={{display:'flex',alignItems:'center',gap:5}}>
+                    <label style={{fontSize:11,color:'#aaa'}}>h/day</label>
+                    <input type="number" value={curStdDay} min="0.5" max="12" step="0.5"
+                      onChange={e=>setRoleHours(p=>({...p,[rd.key]:{...p[rd.key],stdDay:parseFloat(e.target.value)||rd.stdDay}}))}
+                      style={{width:52,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
+                  </div>
+                  <div style={{display:'flex',alignItems:'center',gap:5}}>
+                    <label style={{fontSize:11,color:'#aaa'}}>d/wk</label>
+                    <input type="number" value={curDpw} min="1" max="7" step="0.5"
+                      onChange={e=>setRoleHours(p=>({...p,[rd.key]:{...p[rd.key],daysPerWeek:parseFloat(e.target.value)||5}}))}
+                      style={{width:46,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
+                  </div>
+                  <div style={{display:'flex',alignItems:'center',gap:5}}>
+                    <label style={{fontSize:11,color:'#aaa'}}>holiday h</label>
+                    <input type="number" value={holiday[rd.key]||0} min="0" step="0.5"
+                      onChange={e=>setHoliday(p=>({...p,[rd.key]:parseFloat(e.target.value)||0}))}
+                      style={{width:52,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
+                  </div>
+                  <span style={{fontSize:12,fontWeight:'bold',color:'#1a1a1a'}}>{getMonthHrs(rd.key).toFixed(1)}h</span>
+                  <div style={{display:'flex',gap:3,marginLeft:'auto'}}>
                     {['simple','complex','overhead'].map(s=>(
                       <button key={s} onClick={()=>setRoleStreams(p=>({...p,[rd.key]:s}))}
-                        style={{fontSize:10,padding:'3px 7px',borderRadius:3,border:`1px solid ${stream===s?streamColors[s]:streamColors[s]+'44'}`,background:stream===s?streamColors[s]:streamColors[s]+'11',color:stream===s?'#fff':streamColors[s],cursor:'pointer',fontFamily:'Georgia,serif',fontWeight:stream===s?'bold':'normal',whiteSpace:'nowrap'}}>
+                        style={{fontSize:10,padding:'2px 6px',borderRadius:3,border:`1px solid ${stream===s?streamColors[s]:streamColors[s]+'33'}`,background:stream===s?streamColors[s]:'transparent',color:stream===s?'#fff':streamColors[s]+'99',cursor:'pointer',fontFamily:'Georgia,serif'}}>
                         {s==='overhead'?'Pool':s.charAt(0).toUpperCase()+s.slice(1)}
                       </button>
                     ))}
@@ -576,30 +574,39 @@ export default function App() {
             const stream=er.stream||'complex';
             const streamColors={'simple':'#1D9E75','complex':'#7F77DD','overhead':'#BA7517'};
             return(
-              <div key={er.key} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',border:`0.5px solid ${er.color}44`,borderRadius:6,marginBottom:6,background:'#fff',flexWrap:'wrap'}}>
+              <div key={er.key} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',border:`0.5px solid ${er.color}33`,borderRadius:6,marginBottom:6,background:'#fff',flexWrap:'wrap'}}>
                 <Dot c={er.color}/>
                 <input value={er.label} onChange={e=>setExtraRoles(p=>p.map((x,j)=>j===i?{...x,label:e.target.value}:x))}
-                  style={{fontSize:13,border:'none',background:'transparent',width:140,fontFamily:'Georgia,serif',outline:'none',fontWeight:'bold'}} placeholder="Name"/>
-                <input type="number" value={er.stdDay} min="0.5" max="12" step="0.5"
-                  onChange={e=>setExtraRoles(p=>p.map((x,j)=>j===i?{...x,stdDay:parseFloat(e.target.value)||7}:x))}
-                  style={{width:52,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
-                <input type="number" value={er.daysPerWeek} min="1" max="7" step="0.5"
-                  onChange={e=>setExtraRoles(p=>p.map((x,j)=>j===i?{...x,daysPerWeek:parseFloat(e.target.value)||5}:x))}
-                  style={{width:46,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
-                <input type="number" value={er.holiday||0} min="0" step="0.5"
-                  onChange={e=>setExtraRoles(p=>p.map((x,j)=>j===i?{...x,holiday:parseFloat(e.target.value)||0}:x))}
-                  style={{width:60,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
-                <span style={{fontSize:12,fontWeight:'bold',color:'#1a1a1a',minWidth:52}}>{getMonthHrs(er.key).toFixed(1)}h</span>
-                <div style={{display:'flex',gap:3}}>
+                  style={{fontSize:13,border:'none',background:'transparent',width:150,fontFamily:'Georgia,serif',outline:'none',fontWeight:'bold'}} placeholder="Name"/>
+                <div style={{display:'flex',alignItems:'center',gap:5}}>
+                  <label style={{fontSize:11,color:'#aaa'}}>h/day</label>
+                  <input type="number" value={er.stdDay} min="0.5" max="12" step="0.5"
+                    onChange={e=>setExtraRoles(p=>p.map((x,j)=>j===i?{...x,stdDay:parseFloat(e.target.value)||7}:x))}
+                    style={{width:52,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
+                </div>
+                <div style={{display:'flex',alignItems:'center',gap:5}}>
+                  <label style={{fontSize:11,color:'#aaa'}}>d/wk</label>
+                  <input type="number" value={er.daysPerWeek} min="1" max="7" step="0.5"
+                    onChange={e=>setExtraRoles(p=>p.map((x,j)=>j===i?{...x,daysPerWeek:parseFloat(e.target.value)||5}:x))}
+                    style={{width:46,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
+                </div>
+                <div style={{display:'flex',alignItems:'center',gap:5}}>
+                  <label style={{fontSize:11,color:'#aaa'}}>holiday h</label>
+                  <input type="number" value={er.holiday||0} min="0" step="0.5"
+                    onChange={e=>setExtraRoles(p=>p.map((x,j)=>j===i?{...x,holiday:parseFloat(e.target.value)||0}:x))}
+                    style={{width:52,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
+                </div>
+                <span style={{fontSize:12,fontWeight:'bold',color:'#1a1a1a'}}>{getMonthHrs(er.key).toFixed(1)}h</span>
+                <div style={{display:'flex',gap:3,marginLeft:'auto'}}>
                   {['simple','complex','overhead'].map(s=>(
                     <button key={s} onClick={()=>setExtraRoles(p=>p.map((x,j)=>j===i?{...x,stream:s}:x))}
-                      style={{fontSize:10,padding:'3px 7px',borderRadius:3,border:`1px solid ${stream===s?streamColors[s]:streamColors[s]+'44'}`,background:stream===s?streamColors[s]:streamColors[s]+'11',color:stream===s?'#fff':streamColors[s],cursor:'pointer',fontFamily:'Georgia,serif',fontWeight:stream===s?'bold':'normal',whiteSpace:'nowrap'}}>
+                      style={{fontSize:10,padding:'2px 6px',borderRadius:3,border:`1px solid ${stream===s?streamColors[s]:streamColors[s]+'33'}`,background:stream===s?streamColors[s]:'transparent',color:stream===s?'#fff':streamColors[s]+'99',cursor:'pointer',fontFamily:'Georgia,serif'}}>
                       {s==='overhead'?'Pool':s.charAt(0).toUpperCase()+s.slice(1)}
                     </button>
                   ))}
                 </div>
                 <button onClick={()=>setExtraRoles(p=>p.filter((_,j)=>j!==i))}
-                  style={{...btn,padding:'3px 8px',fontSize:12,color:'#b91c1c',borderColor:'#fca5a5',marginLeft:'auto'}}>×</button>
+                  style={{...btn,padding:'3px 8px',fontSize:12,color:'#b91c1c',borderColor:'#fca5a5'}}>×</button>
               </div>
             );
           })}

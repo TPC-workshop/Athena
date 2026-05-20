@@ -282,21 +282,25 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
 
   useEffect(() => {
     if (!authed) return;
-    apiLoad().then(s => {
-      if (s.activeKeys) setActiveKeys(s.activeKeys);
-      if (s.extraRoles) setExtraRoles(s.extraRoles);
-      if (s.workingDays) setWorkingDaysDefault(s.workingDays);
-      if (s.mgmtOverheadBudget !== undefined) setMgmtOverhead(s.mgmtOverheadBudget);
-      if (s.wsOverheadBudget !== undefined) setWsOverhead(s.wsOverheadBudget);
-      if (s.simpleOrders) setSimpleOrders(s.simpleOrders);
-      if (s.complexOrders) setComplexOrders(s.complexOrders);
-      if (s.financeOrders) setFinanceOrders(s.financeOrders);
-      if (s.qCount) setQCount(s.qCount);
-      if (s.calendarMonths) setCalendarMonths(s.calendarMonths);
-      if (s.overtimePool !== undefined) setOvertimePool(s.overtimePool);
-      if (s.complexRatio !== undefined) setComplexRatio(s.complexRatio);
-      if (s.complexThreshold !== undefined) setComplexThreshold(s.complexThreshold);
-      if (s.extraTeam) setExtraTeam(s.extraTeam);
+    Promise.all([apiLoadPlan(), apiLoadQueue()]).then(([plan, queue]) => {
+      // Plan data — team config only
+      if (plan.activeKeys) setActiveKeys(plan.activeKeys);
+      if (plan.extraRoles) setExtraRoles(plan.extraRoles);
+      if (plan.holiday) setPlanHoliday(plan.holiday);
+      if (plan.monthName) setPlanMonthName(plan.monthName);
+      if (plan.workingDays) setWorkingDaysDefault(plan.workingDays);
+      if (plan.mgmtOverheadBudget !== undefined) setMgmtOverhead(plan.mgmtOverheadBudget);
+      if (plan.wsOverheadBudget !== undefined) setWsOverhead(plan.wsOverheadBudget);
+      // Queue data — orders and settings only
+      if (queue.simpleOrders) setSimpleOrders(queue.simpleOrders);
+      if (queue.complexOrders) setComplexOrders(queue.complexOrders);
+      if (queue.financeOrders) setFinanceOrders(queue.financeOrders);
+      if (queue.qCount) setQCount(queue.qCount);
+      if (queue.calendarMonths) setCalendarMonths(queue.calendarMonths);
+      if (queue.overtimePool !== undefined) setOvertimePool(queue.overtimePool);
+      if (queue.complexRatio !== undefined) setComplexRatio(queue.complexRatio);
+      if (queue.complexThreshold !== undefined) setComplexThreshold(queue.complexThreshold);
+      if (queue.extraTeam) setExtraTeam(queue.extraTeam);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [authed]);

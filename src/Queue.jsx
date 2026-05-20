@@ -9,13 +9,20 @@ function getAccrualPerDay(rd) {
   return (28 * rd.stdDay) / workingDaysPerYear;
 }
 
-async function apiLoad() {
+// Load Plan state (team, holiday etc.) — read only from Queue
+async function apiLoadPlan() {
   const r = await fetch('/api/state', { headers: { 'x-athena-password': API_PASSWORD } });
-  if (!r.ok) throw new Error('Load failed');
+  if (!r.ok) throw new Error('Plan load failed');
   return r.json();
 }
-async function apiSave(data) {
-  await fetch('/api/state', {
+// Queue state is stored under a separate key so Plan saves never overwrite it
+async function apiLoadQueue() {
+  const r = await fetch('/api/queue-state', { headers: { 'x-athena-password': API_PASSWORD } });
+  if (!r.ok) return {}; // empty on first load is fine
+  return r.json();
+}
+async function apiSaveQueue(data) {
+  await fetch('/api/queue-state', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-athena-password': API_PASSWORD },
     body: JSON.stringify(data),
@@ -28,7 +35,13 @@ function Dot({ c, s = 9 }) {
 
 function calcOrderMins(order) {
   if (!order.qtys) return (order.estimatedHours || 0) * 60;
-  const tasks = genClientTasks({ ...order, id: 'tmp', bespoke: order.bespoke || [], unitType: order.unitType || 'painted' });
+  // genClientTasks includes both production tasks and bespoke items
+  const tasks = genClientTasks({
+    ...order,
+    id: 'tmp',
+    bespoke: (order.bespoke || []).filter(b => b.desc && b.mins > 0),
+    unitType: order.unitType || 'painted',
+  });
   return tasks.reduce((a, t) => a + (t.m || 0), 0);
 }
 
@@ -294,8 +307,8 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     setSaveMsg('Saving…');
     saveTimer.current = setTimeout(async () => {
       setSaving(true);
-      const current = await apiLoad();
-      await apiSave({ ...current, simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexRatio, complexThreshold, extraTeam });
+      // Save ONLY queue data — never touches Plan state
+      await apiSaveQueue({ simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexRatio, complexThreshold, extraTeam });
       setSaving(false);
       setSaveMsg('✓ Saved');
       setTimeout(() => setSaveMsg(''), 3000);
@@ -506,6 +519,41 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
 
   // ── Styles ─────────────────────────────────────────────────────────────────
 
+  // ── Backup / restore ─────────────────────────────────────────────────────
+  function exportBackup() {
+    const data = { simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexRatio, complexThreshold, extraTeam, exportedAt: new Date().toISOString() };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `athena-queue-backup-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function importBackup(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (data.simpleOrders) setSimpleOrders(data.simpleOrders);
+        if (data.complexOrders) setComplexOrders(data.complexOrders);
+        if (data.financeOrders) setFinanceOrders(data.financeOrders);
+        if (data.qCount) setQCount(data.qCount);
+        if (data.calendarMonths) setCalendarMonths(data.calendarMonths);
+        if (data.overtimePool !== undefined) setOvertimePool(data.overtimePool);
+        if (data.complexRatio !== undefined) setComplexRatio(data.complexRatio);
+        if (data.complexThreshold !== undefined) setComplexThreshold(data.complexThreshold);
+        if (data.extraTeam) setExtraTeam(data.extraTeam);
+        alert('Queue restored successfully from backup.');
+      } catch { alert('Could not read backup file — make sure it is a valid Athena queue backup.'); }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  }
+
   const C = { fontFamily: 'Georgia,serif', fontSize: 13, background: '#f5f4f0', minHeight: '100vh', color: '#1a1a1a' };
   const card = { background: '#fff', border: '0.5px solid #ddd', borderRadius: 8, padding: '1rem 1.25rem', marginBottom: '1rem' };
   const H = { fontSize: 9, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.07em', color: '#888', marginBottom: 8 };
@@ -525,6 +573,16 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
           <div style={{ fontSize: 9, color: '#888', fontStyle: 'italic', marginTop: 3 }}>Lead Time Queue</div>
           <div style={{ fontSize: 11, color: saving ? '#888' : saveMsg.startsWith('✓') ? '#166634' : '#bbb', marginTop: 6 }}>
             {saveMsg || 'Auto-saves to cloud'}
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 10 }}>
+            <button onClick={exportBackup}
+              style={{ padding: '5px 14px', border: '0.5px solid #1D9E75', borderRadius: 4, background: '#f0fdf4', color: '#166534', fontFamily: 'Georgia,serif', fontSize: 11, cursor: 'pointer' }}>
+              ↓ Export backup
+            </button>
+            <label style={{ padding: '5px 14px', border: '0.5px solid #999', borderRadius: 4, background: '#fff', color: '#555', fontFamily: 'Georgia,serif', fontSize: 11, cursor: 'pointer' }}>
+              ↑ Restore backup
+              <input type="file" accept=".json" onChange={importBackup} style={{ display: 'none' }} />
+            </label>
           </div>
         </div>
 

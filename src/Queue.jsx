@@ -35,14 +35,20 @@ function Dot({ c, s = 9 }) {
 
 function calcOrderMins(order) {
   if (!order.qtys) return (order.estimatedHours || 0) * 60;
-  // genClientTasks includes both production tasks and bespoke items
-  const tasks = genClientTasks({
+  // Calculate production task minutes via genClientTasks (without bespoke to avoid string concat bug)
+  const prodTasks = genClientTasks({
     ...order,
     id: 'tmp',
-    bespoke: (order.bespoke || []).filter(b => b.desc && parseInt(b.mins) > 0).map(b => ({...b, mins: parseInt(b.mins)||0})),
+    bespoke: [], // exclude bespoke here, add separately below
     unitType: order.unitType || 'painted',
   });
-  return tasks.reduce((a, t) => a + (t.m || 0), 0);
+  const prodMins = prodTasks.reduce((a, t) => a + (parseInt(t.m) || 0), 0);
+  // Add bespoke minutes explicitly with safe parseInt
+  const bespokeMins = (order.bespoke || []).reduce((a, b) => {
+    const m = parseInt(b.mins) || 0;
+    return b.desc && m > 0 ? a + m : a;
+  }, 0);
+  return prodMins + bespokeMins;
 }
 
 function QueueLogin({ onAuth }) {

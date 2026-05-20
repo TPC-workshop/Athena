@@ -39,7 +39,7 @@ function calcOrderMins(order) {
   const tasks = genClientTasks({
     ...order,
     id: 'tmp',
-    bespoke: (order.bespoke || []).filter(b => b.desc && b.mins > 0),
+    bespoke: (order.bespoke || []).filter(b => b.desc && parseInt(b.mins) > 0).map(b => ({...b, mins: parseInt(b.mins)||0})),
     unitType: order.unitType || 'painted',
   });
   return tasks.reduce((a, t) => a + (t.m || 0), 0);
@@ -143,7 +143,7 @@ const AddOrderForm = memo(function AddOrderForm({ stream, color, onAdd, onCancel
       </div>
 
       <div style={{ display: 'flex', gap: 8 }}>
-        <button onClick={() => onAdd({ name, unitType, qtys: { ...qtys }, bespoke: bespoke.filter(b => b.desc && b.mins) })}
+        <button onClick={() => onAdd({ name, unitType, qtys: { ...qtys }, bespoke: bespoke.filter(b => b.desc && parseInt(b.mins) > 0).map(b => ({...b, mins: parseInt(b.mins)||0})) })}
           style={{ padding: '10px 22px', border: 'none', borderRadius: 4, background: '#1a1a1a', color: '#fff', fontFamily: 'Georgia,serif', fontSize: 13, cursor: 'pointer' }}>
           Add to queue
         </button>

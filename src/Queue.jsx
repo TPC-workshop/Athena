@@ -241,7 +241,7 @@ function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo
 
 // ── Main Queue component ─────────────────────────────────────────────────────
 export default function Queue({ activeKeys: propActiveKeys, workingDays: propWorkingDays, mgmtOverheadBudget: propMgmt, wsOverheadBudget: propWs }) {
-  const [authed, setAuthed] = useState(false);
+  const [authed, setAuthed] = useState(() => sessionStorage.getItem('queueAuthed') === '1');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
@@ -260,6 +260,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   const [expandedMonths, setExpandedMonths] = useState(false);
 
   const [activeKeys, setActiveKeys] = useState(propActiveKeys || ['manager', 'maker1', 'assistant']);
+  const [extraRoles, setExtraRoles] = useState([]);
   const [workingDaysDefault, setWorkingDaysDefault] = useState(propWorkingDays || 21);
   const [mgmtOverhead, setMgmtOverhead] = useState(propMgmt || 20);
   const [wsOverhead, setWsOverhead] = useState(propWs || 28);
@@ -268,6 +269,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     if (!authed) return;
     apiLoad().then(s => {
       if (s.activeKeys) setActiveKeys(s.activeKeys);
+      if (s.extraRoles) setExtraRoles(s.extraRoles);
       if (s.workingDays) setWorkingDaysDefault(s.workingDays);
       if (s.mgmtOverheadBudget !== undefined) setMgmtOverhead(s.mgmtOverheadBudget);
       if (s.wsOverheadBudget !== undefined) setWsOverhead(s.wsOverheadBudget);
@@ -317,7 +319,15 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
       const holidayHrs = (month.holiday && month.holiday[key] !== undefined) ? parseFloat(month.holiday[key]) : accrual;
       totalMins += Math.max(0, grossHrs - holidayHrs) * 60;
     }
-    // Add extra queue-only team members (e.g. Harry 7h/week)
+    // Extra roles from Plan (e.g. Harry)
+    for (const er of extraRoles) {
+      const dpw = parseFloat(er.daysPerWeek) || 5;
+      const wd2 = month.workingDays || workingDaysDefault;
+      const grossHrs = (parseFloat(er.stdDay)||7) * (wd2 * dpw / 5);
+      const holidayHrs = parseFloat(er.holiday) || 0;
+      totalMins += Math.max(0, grossHrs - holidayHrs) * 60;
+    }
+    // Add extra queue-only team members (e.g. Harry via queue settings)
     const wd = month.workingDays || workingDaysDefault;
     for (const m of extraTeam) {
       const hpw = parseFloat(m.hrsPerWeek) || 0;
@@ -484,7 +494,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   const btn = { padding: '8px 16px', border: '0.5px solid #999', borderRadius: 4, background: '#fff', fontFamily: 'Georgia,serif', fontSize: 13, cursor: 'pointer' };
   const lbl = { fontSize: 11, color: '#888', display: 'block', marginBottom: 3 };
 
-  if (!authed) return <QueueLogin onAuth={() => setAuthed(true)} />;
+  if (!authed) return <QueueLogin onAuth={() => { sessionStorage.setItem('queueAuthed','1'); setAuthed(true); }} />;
   if (loading) return <div style={{ fontFamily: 'Georgia,serif', textAlign: 'center', padding: '3rem', color: '#aaa' }}>Loading queue…</div>;
 
   return (
@@ -527,6 +537,11 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
                 </span>
               );
             })}
+            {extraRoles.map(er => (
+              <span key={er.key} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 4, background: er.color + '18', color: er.color, border: `0.5px solid ${er.color}44` }}>
+                <Dot c={er.color} s={7} /> {er.label} <span style={{fontSize:10,opacity:0.7}}>(added in Plan)</span>
+              </span>
+            ))}
           </div>
           <div style={{ fontSize: 11, color: '#aaa' }}>
             Holiday estimated by statutory accrual per working day · override per month in calendar below · add team members in the Plan tab

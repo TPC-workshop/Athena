@@ -204,8 +204,9 @@ export function genClientTasks(cl) {
     });
   }
   for (const b of (cl.bespoke||[])) {
-    if (!b.desc || !b.mins) continue;
-    tasks.push({ id:`${cl.id}|bespoke|${b.desc}`, n:b.desc, m:b.mins, phase:'Bespoke', sugRole:'manager', assignedRole:null, done:false });
+    const bMins = parseInt(b.mins) || 0;
+    if (!b.desc || !bMins) continue;
+    tasks.push({ id:`${cl.id}|bespoke|${b.desc}`, n:b.desc, m:bMins, phase:'Bespoke', sugRole:'manager', assignedRole:null, done:false });
   }
   return tasks;
 }

@@ -60,8 +60,9 @@ const AddOrderForm = memo(function AddOrderForm({ stream, color, onAdd, onCancel
   const [name, setName] = useState('');
   const [unitType, setUnitType] = useState('painted');
   const [qtys, setQtys] = useState(Object.fromEntries(QTYS.map(([q]) => [q, 0])));
+  const [bespoke, setBespoke] = useState([]);
 
-  const order = { name, unitType, qtys, bespoke: [] };
+  const order = { name, unitType, qtys, bespoke };
   const mins = calcOrderMins(order);
   const hrs = mins / 60;
   const threshold = parseFloat(complexThreshold) || 30;
@@ -109,8 +110,27 @@ const AddOrderForm = memo(function AddOrderForm({ stream, color, onAdd, onCancel
           <div style={{ fontSize: 11, color: '#92400e', marginTop: 3 }}>⚠ This order is under {threshold}h — consider adding to the Simple queue instead.</div>
         )}
       </div>
+      {/* Bespoke items */}
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 11, color: '#888', marginBottom: 5 }}>Bespoke <span style={{ color: '#bbb' }}>— add any non-standard tasks with their time</span></div>
+        {bespoke.map((b, i) => (
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 65px auto', gap: 6, marginBottom: 5, alignItems: 'center' }}>
+            <input placeholder="e.g. Prime shaker doors" value={b.desc || ''} style={inp}
+              onChange={e => setBespoke(p => p.map((x, j) => j === i ? { ...x, desc: e.target.value } : x))} />
+            <input type="number" value={b.mins || 60} style={{ ...inp, fontSize: 14 }}
+              onChange={e => setBespoke(p => p.map((x, j) => j === i ? { ...x, mins: parseInt(e.target.value) || 0 } : x))} />
+            <button onClick={() => setBespoke(p => p.filter((_, j) => j !== i))}
+              style={{ padding: '4px 8px', border: '0.5px solid #fca5a5', borderRadius: 4, background: '#fff', color: '#b91c1c', cursor: 'pointer', fontFamily: 'Georgia,serif', fontSize: 12 }}>×</button>
+          </div>
+        ))}
+        <button onClick={() => setBespoke(p => [...p, { desc: '', mins: 60 }])}
+          style={{ padding: '4px 12px', border: '0.5px solid #999', borderRadius: 4, background: '#fff', fontFamily: 'Georgia,serif', fontSize: 12, cursor: 'pointer' }}>
+          + Add bespoke
+        </button>
+      </div>
+
       <div style={{ display: 'flex', gap: 8 }}>
-        <button onClick={() => onAdd({ name, unitType, qtys: { ...qtys }, bespoke: [] })}
+        <button onClick={() => onAdd({ name, unitType, qtys: { ...qtys }, bespoke: bespoke.filter(b => b.desc && b.mins) })}
           style={{ padding: '10px 22px', border: 'none', borderRadius: 4, background: '#1a1a1a', color: '#fff', fontFamily: 'Georgia,serif', fontSize: 13, cursor: 'pointer' }}>
           Add to queue
         </button>

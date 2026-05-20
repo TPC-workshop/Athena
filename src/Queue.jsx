@@ -261,6 +261,8 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
 
   const [activeKeys, setActiveKeys] = useState(propActiveKeys || ['manager', 'maker1', 'assistant']);
   const [extraRoles, setExtraRoles] = useState([]);
+  const [planHoliday, setPlanHoliday] = useState({});
+  const [planMonthName, setPlanMonthName] = useState('');
   const [workingDaysDefault, setWorkingDaysDefault] = useState(propWorkingDays || 21);
   const [mgmtOverhead, setMgmtOverhead] = useState(propMgmt || 20);
   const [wsOverhead, setWsOverhead] = useState(propWs || 28);
@@ -307,28 +309,45 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
 
   // ── Calendar ───────────────────────────────────────────────────────────────
 
+  // Is this calendar month the same as the current Plan month?
+  function isPlanMonth(monthLabel) {
+    if (!planMonthName) return false;
+    return monthLabel.trim().toLowerCase() === planMonthName.trim().toLowerCase();
+  }
+
   function getMonthProductionMins(month) {
     let totalMins = 0;
+    const wd = month.workingDays || workingDaysDefault;
+    const usePlanHoliday = isPlanMonth(month.label);
+
     for (const key of activeKeys) {
       const rd = ROLE_DEFS.find(r => r.key === key);
       if (!rd) continue;
       const dpw = rd.daysPerWeek || 5;
-      const wd = month.workingDays || workingDaysDefault;
       const grossHrs = rd.stdDay * (wd * dpw / 5);
       const accrual = getAccrualPerDay(rd) * wd;
-      const holidayHrs = (month.holiday && month.holiday[key] !== undefined) ? parseFloat(month.holiday[key]) : accrual;
+      // Priority: 1) calendar month override, 2) Plan holiday if same month, 3) accrual estimate
+      let holidayHrs;
+      if (month.holiday && month.holiday[key] !== undefined) {
+        holidayHrs = parseFloat(month.holiday[key]); // calendar override
+      } else if (usePlanHoliday && planHoliday[key] !== undefined) {
+        holidayHrs = parseFloat(planHoliday[key]);   // actual from Plan
+      } else {
+        holidayHrs = accrual;                         // accrual estimate
+      }
       totalMins += Math.max(0, grossHrs - holidayHrs) * 60;
     }
-    // Extra roles from Plan (e.g. Harry)
+    // Extra roles from Plan (e.g. Harry) — use their holiday field directly
     for (const er of extraRoles) {
       const dpw = parseFloat(er.daysPerWeek) || 5;
-      const wd2 = month.workingDays || workingDaysDefault;
-      const grossHrs = (parseFloat(er.stdDay)||7) * (wd2 * dpw / 5);
-      const holidayHrs = parseFloat(er.holiday) || 0;
+      const grossHrs = (parseFloat(er.stdDay)||7) * (wd * dpw / 5);
+      const accrual = getAccrualPerDay({stdDay: parseFloat(er.stdDay)||7, daysPerWeek: dpw}) * wd;
+      const holidayHrs = (month.holiday && month.holiday[er.key] !== undefined)
+        ? parseFloat(month.holiday[er.key])
+        : (parseFloat(er.holiday) || accrual);
       totalMins += Math.max(0, grossHrs - holidayHrs) * 60;
     }
-    // Add extra queue-only team members (e.g. Harry via queue settings)
-    const wd = month.workingDays || workingDaysDefault;
+    // Queue-only extra team members
     for (const m of extraTeam) {
       const hpw = parseFloat(m.hrsPerWeek) || 0;
       if (hpw > 0) totalMins += hpw * (wd / 5) * 60;
@@ -544,7 +563,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
             ))}
           </div>
           <div style={{ fontSize: 11, color: '#aaa' }}>
-            Holiday estimated by statutory accrual per working day · override per month in calendar below · add team members in the Plan tab
+            {planMonthName ? <span>Holiday for <strong>{planMonthName}</strong> uses actual figures from Plan · future months use statutory accrual estimate · override any month in calendar below</span> : 'Holiday uses statutory accrual estimate · set month in Plan to use actual figures · override per month in calendar below'}
           </div>
         </div>
 

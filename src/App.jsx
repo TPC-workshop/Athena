@@ -219,7 +219,11 @@ export default function App() {
   const saveTimer = useRef(null);
 
   const [activeKeys, setActiveKeys] = useState(['manager','maker1','assistant']);
-  const [extraRoles, setExtraRoles] = useState([]); // [{key,label,color,stdDay,daysPerWeek,holiday}]
+  const [extraRoles, setExtraRoles] = useState([]); // [{key,label,color,stdDay,daysPerWeek,holiday,stream}]
+  // stream assignment per role key: 'simple'|'complex'|'overhead'
+  const [roleStreams, setRoleStreams] = useState({manager:'complex',maker1:'simple',maker2:'simple',painter:'overhead',assistant:'simple'});
+  // editable hours/days per standard role
+  const [roleHours, setRoleHours] = useState({manager:{stdDay:7.5,daysPerWeek:5},maker1:{stdDay:7,daysPerWeek:5},maker2:{stdDay:7,daysPerWeek:5},painter:{stdDay:7,daysPerWeek:5},assistant:{stdDay:7,daysPerWeek:3}});
   const [monthName, setMonthName] = useState('');
   const [workingDays, setWorkingDays] = useState(21);
   const [holiday, setHoliday] = useState({manager:0,maker1:0,maker2:0,painter:0,assistant:0});
@@ -261,13 +265,15 @@ export default function App() {
       if (s.extraTasks) setExtraTasks(s.extraTasks);
       if (s.mgmtExtraTasks) setMgmtExtraTasks(s.mgmtExtraTasks);
       if (s.extraRoles) setExtraRoles(s.extraRoles);
+      if (s.roleStreams) setRoleStreams(s.roleStreams);
+      if (s.roleHours) setRoleHours(s.roleHours);
       setLoading(false);
     }).catch(()=>setLoading(false));
   }, []);
 
   const stateRef = useRef({});
   useEffect(() => {
-    stateRef.current = { monthName,workingDays,activeKeys,holiday,extraRoles,mgmtOverheadBudget,wsOverheadBudget,clients,cCount,absence,dayDate,dayHrs,mgmtTasks,wsTasks,clientTasks,extraTasks,mgmtExtraTasks };
+    stateRef.current = { monthName,workingDays,activeKeys,holiday,extraRoles,roleStreams,roleHours,mgmtOverheadBudget,wsOverheadBudget,clients,cCount,absence,dayDate,dayHrs,mgmtTasks,wsTasks,clientTasks,extraTasks,mgmtExtraTasks };
   });
 
   const triggerSave = useCallback(() => {
@@ -282,28 +288,68 @@ export default function App() {
     }, 1500);
   }, []);
 
-  useEffect(()=>{ if(!loading) triggerSave(); }, [monthName,workingDays,activeKeys,holiday,extraRoles,mgmtOverheadBudget,wsOverheadBudget,clients,cCount,absence,dayDate,dayHrs,mgmtTasks,wsTasks,clientTasks,extraTasks,mgmtExtraTasks]);
+  useEffect(()=>{ if(!loading) triggerSave(); }, [monthName,workingDays,activeKeys,holiday,extraRoles,roleStreams,roleHours,mgmtOverheadBudget,wsOverheadBudget,clients,cCount,absence,dayDate,dayHrs,mgmtTasks,wsTasks,clientTasks,extraTasks,mgmtExtraTasks]);
 
   function getMonthHrs(key) {
-    // Check extra roles first
     const er = extraRoles.find(r=>r.key===key);
     if(er) {
       const dpw = parseFloat(er.daysPerWeek)||5;
       return Math.max(0, (parseFloat(er.stdDay)||7)*(workingDays*dpw/5) - (parseFloat(er.holiday)||0));
     }
+    const rh = roleHours[key];
     const rd = ROLE_DEFS.find(r=>r.key===key); if(!rd) return 0;
-    const dpw = rd.daysPerWeek||5;
-    return Math.max(0, rd.stdDay*(workingDays*dpw/5) - (parseFloat(holiday[key])||0));
+    const dpw = rh ? (parseFloat(rh.daysPerWeek)||rd.daysPerWeek||5) : (rd.daysPerWeek||5);
+    const stdDay = rh ? (parseFloat(rh.stdDay)||rd.stdDay) : rd.stdDay;
+    return Math.max(0, stdDay*(workingDays*dpw/5) - (parseFloat(holiday[key])||0));
   }
 
-  // All roles combined — standard + extra
-  const allRoleDefs = [...ROLE_DEFS, ...extraRoles];
+  function getRoleStream(key) {
+    const er = extraRoles.find(r=>r.key===key);
+    if(er) return er.stream||'complex';
+    return roleStreams[key]||'simple';
+  }
+
+  // Keys by stream
   const allActiveKeys = [...activeKeys, ...extraRoles.map(r=>r.key)];
+  const simpleKeys = allActiveKeys.filter(k=>getRoleStream(k)==='simple');
+  const complexKeys = allActiveKeys.filter(k=>getRoleStream(k)==='complex');
+  // overhead pool people — their hours are deducted from total but not assigned to either stream
+  const overheadKeys = allActiveKeys.filter(k=>getRoleStream(k)==='overhead');
+
   const totalAvail = allActiveKeys.reduce((a,k)=>a+getMonthHrs(k)*60,0);
   const absenceMins = absence.reduce((a,u)=>a+(parseFloat(u.hrs)||0)*60,0);
   const mgmtBudgetMins = (parseFloat(mgmtOverheadBudget)||0)*60;
   const wsBudgetMins = (parseFloat(wsOverheadBudget)||0)*60;
   const totalOverheadBudget = mgmtBudgetMins + wsBudgetMins;
+
+  // Simple stream capacity — simple team hours minus their share of overhead
+  const simpleRawMins = simpleKeys.reduce((a,k)=>a+getMonthHrs(k)*60,0);
+  const complexRawMins = complexKeys.reduce((a,k)=>a+getMonthHrs(k)*60,0);
+  const overheadRawMins = overheadKeys.reduce((a,k)=>a+getMonthHrs(k)*60,0);
+  const totalRawMins = simpleRawMins + complexRawMins + overheadRawMins;
+  // Overhead is split proportionally by raw hours
+  const simpleFrac = totalRawMins > 0 ? simpleRawMins / totalRawMins : 0.5;
+  const complexFrac = totalRawMins > 0 ? complexRawMins / totalRawMins : 0.5;
+  const simpleOverhead = totalOverheadBudget * simpleFrac;
+  const complexOverhead = totalOverheadBudget * complexFrac;
+
+  // Spray time deduction from complex capacity (manager sprays simple units)
+  // Top coat 1 + Top coat 2 = 90 mins per painted unit, spray bars = 30 mins per bar set
+  function calcSimpleSprayMins(orderList) {
+    return orderList.filter(cl=>cl.stream==='simple'||!cl.stream).reduce((a,cl)=>{
+      const paintUnits = parseInt(cl.qtys.paint)||0;
+      const bars = parseInt(cl.qtys.bar)||0;
+      return a + (paintUnits * 90) + (bars * 30);
+    },0);
+  }
+
+  const simpleClients = clients.filter(cl=>cl.stream==='simple'||!cl.stream);
+  const complexClients = clients.filter(cl=>cl.stream==='complex');
+  const simpleSprayMins = calcSimpleSprayMins(simpleClients);
+
+  // Production capacity per stream
+  const simpleProdAvail = Math.max(0, simpleRawMins - simpleOverhead - absenceMins*simpleFrac);
+  const complexProdAvail = Math.max(0, complexRawMins - complexOverhead - absenceMins*complexFrac - simpleSprayMins);
 
   // Overhead consumed: count × task minutes
   const mgmtDoneMins = mgmtTasks.reduce((a,t)=>a+(t.count||0)*(t.m||0),0);
@@ -313,15 +359,18 @@ export default function App() {
   const wsAdHocMins = extraTasks.reduce((a,t)=>a+(t.m||0),0);
 
   // Production capacity: total minus overhead budgets minus absence only
-  const prodAvail = Math.max(0, totalAvail - totalOverheadBudget - absenceMins);
 
-  const totalOrder = clients.reduce((a,cl)=>{
-    const tasks = genClientTasks(cl);
-    return a + tasks.reduce((s,t)=>s+(t.m||0),0);
-  },0);
-  const capPct = prodAvail>0 ? Math.round(totalOrder/prodAvail*100) : 0;
-  const atCap=capPct>=100, nearCap=capPct>=85;
-  const remain = prodAvail-totalOrder;
+
+  const simpleTotalOrder = simpleClients.reduce((a,cl)=>{ const tasks=genClientTasks(cl); return a+tasks.reduce((s,t)=>s+(t.m||0),0); },0);
+  const complexTotalOrder = complexClients.reduce((a,cl)=>{ const tasks=genClientTasks(cl); return a+tasks.reduce((s,t)=>s+(t.m||0),0); },0);
+  const totalOrder = simpleTotalOrder + complexTotalOrder;
+  const simpleCapPct = simpleProdAvail>0 ? Math.round(simpleTotalOrder/simpleProdAvail*100) : 0;
+  const complexCapPct = complexProdAvail>0 ? Math.round(complexTotalOrder/complexProdAvail*100) : 0;
+  const atCap = simpleCapPct>=100||complexCapPct>=100;
+  const nearCap = simpleCapPct>=85||complexCapPct>=85;
+  const simpleRemain = simpleProdAvail - simpleTotalOrder;
+  const complexRemain = complexProdAvail - complexTotalOrder;
+  const remain = simpleRemain + complexRemain;
 
   function erColor(k) { const er=extraRoles.find(r=>r.key===k); return er?er.color:rColor(k); }
   function erLabel(k) { const er=extraRoles.find(r=>r.key===k); return er?er.label:rLabel(k); }
@@ -352,7 +401,8 @@ export default function App() {
     return {label:'On track',color:'#92400e',bg:'#fffbeb',icon:'→',diff:Math.abs(diff)};
   }
 
-  const addClient = ()=>{ if(atCap)return; const col=COLORS[clients.length%COLORS.length]; setClients(p=>[...p,{id:cCount,col,name:'',date:'',targetDate:'',unitType:'painted',qtys:Object.fromEntries(QTYS.map(([q])=>[q,0])),bespoke:[]}]); setCCount(p=>p+1); };
+  const addSimpleClient = ()=>{ const col=COLORS[clients.length%COLORS.length]; setClients(p=>[...p,{id:cCount,col,name:'',date:'',targetDate:'',unitType:'painted',stream:'simple',qtys:Object.fromEntries(QTYS.map(([q])=>[q,0])),bespoke:[]}]); setCCount(p=>p+1); };
+  const addComplexClient = ()=>{ const col=COLORS[clients.filter(c=>c.stream==='complex').length%COLORS.length]; setClients(p=>[...p,{id:cCount,col,name:'',date:'',targetDate:'',unitType:'painted',stream:'complex',qtys:Object.fromEntries(QTYS.map(([q])=>[q,0])),bespoke:[]}]); setCCount(p=>p+1); };
   const uCl=(id,f,v)=>setClients(p=>p.map(c=>c.id===id?{...c,[f]:v}:c));
   const uQty=(id,q,v)=>setClients(p=>p.map(c=>c.id===id?{...c,qtys:{...c.qtys,[q]:parseInt(v)||0}}:c));
   const delCl=(id)=>{ setClients(p=>p.filter(c=>c.id!==id)); setClientTasks(p=>{const n={...p};delete n[id];return n;}); };
@@ -431,8 +481,8 @@ export default function App() {
   const btn={padding:'8px 16px',border:'0.5px solid #999',borderRadius:4,background:'#fff',fontFamily:'Georgia,serif',fontSize:13,cursor:'pointer'};
   const btnP={padding:'10px 22px',border:'none',borderRadius:4,background:'#1a1a1a',color:'#fff',fontFamily:'Georgia,serif',fontSize:13,cursor:'pointer'};
   const lbl={fontSize:11,color:'#888',display:'block',marginBottom:3};
-  const capCol=atCap?'#b91c1c':nearCap?'#92400e':'#166534';
-  const barCol=atCap?'#dc2626':nearCap?'#d97706':'#1D9E75';
+
+
 
   if (loading) return <div style={{fontFamily:'Georgia,serif',textAlign:'center',padding:'3rem',color:'#aaa'}}>Loading Athena…</div>;
   if (mode==='progress') return (
@@ -476,55 +526,94 @@ export default function App() {
 
         <div style={card}>
           <div style={H}>Team this month</div>
+          <div style={{display:'grid',gridTemplateColumns:'auto 1fr',gap:'0 8px',fontSize:10,color:'#aaa',marginBottom:6,paddingBottom:4,borderBottom:'0.5px solid #f0f0f0'}}>
+            <span/>
+            <div style={{display:'flex',gap:8}}>
+              <span style={{minWidth:140}}>Name</span>
+              <span style={{minWidth:52}}>h/day</span>
+              <span style={{minWidth:46}}>d/wk</span>
+              <span style={{minWidth:60}}>Holiday h</span>
+              <span style={{minWidth:60}}>Avail</span>
+              <span>Stream</span>
+            </div>
+          </div>
           {ROLE_DEFS.map(rd=>{
             const active=activeKeys.includes(rd.key);
+            const rh=roleHours[rd.key]||{};
+            const curStdDay=parseFloat(rh.stdDay)||rd.stdDay;
+            const curDpw=parseFloat(rh.daysPerWeek)||(rd.daysPerWeek||5);
+            const stream=roleStreams[rd.key]||'simple';
+            const streamColors={'simple':'#1D9E75','complex':'#7F77DD','overhead':'#BA7517'};
             return(
-              <div key={rd.key} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',border:`0.5px solid ${active?'#ddd':'#eee'}`,borderRadius:6,marginBottom:6,background:active?'#fff':'#fafaf8',opacity:active?1:0.5,flexWrap:'wrap'}}>
+              <div key={rd.key} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',border:`0.5px solid ${active?rd.color+'44':'#eee'}`,borderRadius:6,marginBottom:6,background:active?'#fff':'#fafaf8',opacity:active?1:0.45,flexWrap:'wrap'}}>
                 <input type="checkbox" checked={active} onChange={e=>setActiveKeys(p=>e.target.checked?[...p,rd.key]:p.filter(k=>k!==rd.key))} style={{width:18,height:18}}/>
-                <Dot c={rd.color}/><span style={{fontSize:13,minWidth:150}}>{rd.label}</span>
-                <span style={{fontSize:11,color:'#aaa',minWidth:60}}>{rd.stdDay}h/day{rd.daysPerWeek?` · ${rd.daysPerWeek}d/wk`:''}</span>
+                <Dot c={rd.color}/>
+                <span style={{fontSize:13,minWidth:140,fontWeight:'500'}}>{rd.label}</span>
                 {active&&<>
-                  <label style={{fontSize:11,color:'#888',whiteSpace:'nowrap'}}>Holiday (hrs):</label>
-                  <input type="number" value={holiday[rd.key]} min="0" step="0.5" onChange={e=>setHoliday(p=>({...p,[rd.key]:parseFloat(e.target.value)||0}))}
+                  <input type="number" value={curStdDay} min="0.5" max="12" step="0.5"
+                    onChange={e=>setRoleHours(p=>({...p,[rd.key]:{...p[rd.key],stdDay:parseFloat(e.target.value)||rd.stdDay}}))}
+                    style={{width:52,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
+                  <input type="number" value={curDpw} min="1" max="7" step="0.5"
+                    onChange={e=>setRoleHours(p=>({...p,[rd.key]:{...p[rd.key],daysPerWeek:parseFloat(e.target.value)||5}}))}
+                    style={{width:46,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
+                  <input type="number" value={holiday[rd.key]||0} min="0" step="0.5"
+                    onChange={e=>setHoliday(p=>({...p,[rd.key]:parseFloat(e.target.value)||0}))}
                     style={{width:60,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
-                  <span style={{fontSize:13,fontWeight:'bold',color:'#1a1a1a'}}>{getMonthHrs(rd.key).toFixed(1)}h</span>
+                  <span style={{fontSize:12,fontWeight:'bold',color:'#1a1a1a',minWidth:52}}>{getMonthHrs(rd.key).toFixed(1)}h</span>
+                  <div style={{display:'flex',gap:3}}>
+                    {['simple','complex','overhead'].map(s=>(
+                      <button key={s} onClick={()=>setRoleStreams(p=>({...p,[rd.key]:s}))}
+                        style={{fontSize:10,padding:'3px 7px',borderRadius:3,border:`1px solid ${stream===s?streamColors[s]:streamColors[s]+'44'}`,background:stream===s?streamColors[s]:streamColors[s]+'11',color:stream===s?'#fff':streamColors[s],cursor:'pointer',fontFamily:'Georgia,serif',fontWeight:stream===s?'bold':'normal',whiteSpace:'nowrap'}}>
+                        {s==='overhead'?'Pool':s.charAt(0).toUpperCase()+s.slice(1)}
+                      </button>
+                    ))}
+                  </div>
                 </>}
               </div>
             );
           })}
-          {/* Extra (ad hoc) team members */}
-          {extraRoles.map((er,i)=>(
-            <div key={er.key} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',border:`0.5px solid ${er.color}44`,borderRadius:6,marginBottom:6,background:'#fff',flexWrap:'wrap'}}>
-              <Dot c={er.color}/>
-              <input value={er.label} onChange={e=>setExtraRoles(p=>p.map((x,j)=>j===i?{...x,label:e.target.value}:x))}
-                style={{fontSize:13,border:'none',background:'transparent',width:150,fontFamily:'Georgia,serif',outline:'none',fontWeight:'bold'}}
-                placeholder="Name"/>
-              <label style={{fontSize:11,color:'#888',whiteSpace:'nowrap'}}>h/day:</label>
-              <input type="number" value={er.stdDay} min="0.5" max="12" step="0.5"
-                onChange={e=>setExtraRoles(p=>p.map((x,j)=>j===i?{...x,stdDay:parseFloat(e.target.value)||7}:x))}
-                style={{width:52,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
-              <label style={{fontSize:11,color:'#888',whiteSpace:'nowrap'}}>d/wk:</label>
-              <input type="number" value={er.daysPerWeek} min="1" max="7" step="1"
-                onChange={e=>setExtraRoles(p=>p.map((x,j)=>j===i?{...x,daysPerWeek:parseFloat(e.target.value)||5}:x))}
-                style={{width:46,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
-              <label style={{fontSize:11,color:'#888',whiteSpace:'nowrap'}}>Holiday (hrs):</label>
-              <input type="number" value={er.holiday||0} min="0" step="0.5"
-                onChange={e=>setExtraRoles(p=>p.map((x,j)=>j===i?{...x,holiday:parseFloat(e.target.value)||0}:x))}
-                style={{width:52,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
-              <span style={{fontSize:13,fontWeight:'bold',color:'#1a1a1a'}}>{getMonthHrs(er.key).toFixed(1)}h</span>
-              <button onClick={()=>setExtraRoles(p=>p.filter((_,j)=>j!==i))}
-                style={{...btn,padding:'3px 8px',fontSize:12,color:'#b91c1c',borderColor:'#fca5a5',marginLeft:'auto'}}>×</button>
-            </div>
-          ))}
+          {extraRoles.map((er,i)=>{
+            const stream=er.stream||'complex';
+            const streamColors={'simple':'#1D9E75','complex':'#7F77DD','overhead':'#BA7517'};
+            return(
+              <div key={er.key} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',border:`0.5px solid ${er.color}44`,borderRadius:6,marginBottom:6,background:'#fff',flexWrap:'wrap'}}>
+                <Dot c={er.color}/>
+                <input value={er.label} onChange={e=>setExtraRoles(p=>p.map((x,j)=>j===i?{...x,label:e.target.value}:x))}
+                  style={{fontSize:13,border:'none',background:'transparent',width:140,fontFamily:'Georgia,serif',outline:'none',fontWeight:'bold'}} placeholder="Name"/>
+                <input type="number" value={er.stdDay} min="0.5" max="12" step="0.5"
+                  onChange={e=>setExtraRoles(p=>p.map((x,j)=>j===i?{...x,stdDay:parseFloat(e.target.value)||7}:x))}
+                  style={{width:52,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
+                <input type="number" value={er.daysPerWeek} min="1" max="7" step="0.5"
+                  onChange={e=>setExtraRoles(p=>p.map((x,j)=>j===i?{...x,daysPerWeek:parseFloat(e.target.value)||5}:x))}
+                  style={{width:46,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
+                <input type="number" value={er.holiday||0} min="0" step="0.5"
+                  onChange={e=>setExtraRoles(p=>p.map((x,j)=>j===i?{...x,holiday:parseFloat(e.target.value)||0}:x))}
+                  style={{width:60,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
+                <span style={{fontSize:12,fontWeight:'bold',color:'#1a1a1a',minWidth:52}}>{getMonthHrs(er.key).toFixed(1)}h</span>
+                <div style={{display:'flex',gap:3}}>
+                  {['simple','complex','overhead'].map(s=>(
+                    <button key={s} onClick={()=>setExtraRoles(p=>p.map((x,j)=>j===i?{...x,stream:s}:x))}
+                      style={{fontSize:10,padding:'3px 7px',borderRadius:3,border:`1px solid ${stream===s?streamColors[s]:streamColors[s]+'44'}`,background:stream===s?streamColors[s]:streamColors[s]+'11',color:stream===s?'#fff':streamColors[s],cursor:'pointer',fontFamily:'Georgia,serif',fontWeight:stream===s?'bold':'normal',whiteSpace:'nowrap'}}>
+                      {s==='overhead'?'Pool':s.charAt(0).toUpperCase()+s.slice(1)}
+                    </button>
+                  ))}
+                </div>
+                <button onClick={()=>setExtraRoles(p=>p.filter((_,j)=>j!==i))}
+                  style={{...btn,padding:'3px 8px',fontSize:12,color:'#b91c1c',borderColor:'#fca5a5',marginLeft:'auto'}}>×</button>
+              </div>
+            );
+          })}
           <div style={{marginTop:8,display:'flex',justifyContent:'space-between',alignItems:'center',paddingTop:8,borderTop:'0.5px solid #eee'}}>
-            <div style={{fontSize:12,color:'#888'}}>
-              Total available: <strong style={{color:'#1a1a1a'}}>{(totalAvail/60).toFixed(1)}h</strong>
+            <div style={{fontSize:11,color:'#888'}}>
+              Simple: <strong style={{color:'#1D9E75'}}>{(simpleRawMins/60).toFixed(1)}h</strong>
+              &nbsp;·&nbsp;Complex: <strong style={{color:'#7F77DD'}}>{(complexRawMins/60).toFixed(1)}h</strong>
+              {overheadRawMins>0&&<>&nbsp;·&nbsp;Pool: <strong style={{color:'#BA7517'}}>{(overheadRawMins/60).toFixed(1)}h</strong></>}
             </div>
             <button onClick={()=>{
               const colors=['#E24B4A','#2E8B8B','#7B4F9E','#C68B2F','#4A7C59'];
               const col=colors[extraRoles.length%colors.length];
               const key=`extra_${Date.now()}`;
-              setExtraRoles(p=>[...p,{key,label:'New team member',color:col,stdDay:7,daysPerWeek:5,holiday:0}]);
+              setExtraRoles(p=>[...p,{key,label:'New team member',color:col,stdDay:7,daysPerWeek:5,holiday:0,stream:'complex'}]);
             }} style={{...btn,padding:'4px 12px',fontSize:12}}>+ Add team member</button>
           </div>
         </div>
@@ -571,75 +660,108 @@ export default function App() {
         <OverheadBar label="Management overhead" color="#7F77DD" budgetHrs={mgmtOverheadBudget} doneMins={mgmtDoneMins} adHocMins={mgmtAdHocMins}/>
         <OverheadBar label="Workshop overhead" color="#888" budgetHrs={wsOverheadBudget} doneMins={wsDoneMins} adHocMins={wsAdHocMins}/>
 
-        <div style={{...card,borderColor:atCap?'#dc2626':nearCap?'#d97706':'#ddd',background:atCap?'#fef2f2':nearCap?'#fffbeb':'#fff'}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-            <div style={H}>Production capacity</div>
-            <div style={{fontSize:13,fontWeight:'bold',color:capCol}}>{capPct}%</div>
-          </div>
-          <div style={{height:14,background:'#eee',borderRadius:7,overflow:'hidden',marginBottom:8}}>
-            <div style={{height:'100%',width:`${Math.min(capPct,100)}%`,background:barCol,borderRadius:7,transition:'width 0.3s'}}/>
-          </div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(115px,1fr))',gap:8}}>
-            {[['Orders',clients.length,'#1a1a1a'],['Task hours',`${(totalOrder/60).toFixed(1)}h`,'#1a1a1a'],['Capacity',`${(prodAvail/60).toFixed(1)}h`,capCol],[atCap?'Over':'Headroom',`${Math.abs(remain/60).toFixed(1)}h`,capCol]].map(([l,v,c])=>(
-              <div key={l} style={{background:'#f5f4f0',borderRadius:6,padding:'7px 10px'}}>
-                <div style={{fontSize:10,color:'#888',textTransform:'uppercase',letterSpacing:'0.04em',marginBottom:2}}>{l}</div>
-                <div style={{fontSize:16,fontWeight:'bold',color:c}}>{v}</div>
-              </div>
-            ))}
-          </div>
-          {atCap&&<div style={{marginTop:10,fontSize:12,color:'#b91c1c',fontWeight:'bold'}}>⚠ At capacity — no further orders this month.</div>}
-        </div>
-
-        {clients.map(cl=>{
-          const status=getOrderStatus(cl);
-          return (
-            <div key={cl.id} style={{...card,borderLeft:`3px solid ${cl.col}`,padding:0}}>
-              <div style={{padding:'0.75rem 1rem'}}>
-                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10,flexWrap:'wrap',gap:8}}>
-                  <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-                    <Dot c={cl.col}/>
-                    <input placeholder="Client name" value={cl.name} onChange={e=>uCl(cl.id,'name',e.target.value)} style={{fontSize:16,fontWeight:'bold',border:'none',background:'transparent',width:175,fontFamily:'Georgia,serif',outline:'none'}}/>
-                    <input placeholder="Due / week" value={cl.date} onChange={e=>uCl(cl.id,'date',e.target.value)} style={{fontSize:16,border:'none',background:'transparent',color:'#888',width:115,fontFamily:'Georgia,serif',outline:'none'}}/>
-                    <select value={cl.unitType||'painted'} onChange={e=>uCl(cl.id,'unitType',e.target.value)}
-                      style={{fontSize:12,padding:'3px 7px',border:'0.5px solid #ddd',borderRadius:4,fontFamily:'Georgia,serif',background:'#f9f9f7',color:'#555',outline:'none'}}>
-                      {UNIT_TYPES.map(ut=><option key={ut.key} value={ut.key}>{ut.label}</option>)}
-                    </select>
-                    <input type="date" value={cl.targetDate||''} onChange={e=>uCl(cl.id,'targetDate',e.target.value)}
-                      title="Target completion date"
-                      style={{fontSize:14,border:'0.5px solid #e5e7eb',background:'#f9f9f7',color:'#555',borderRadius:4,padding:'3px 6px',fontFamily:'Georgia,serif',outline:'none'}}/>
-                  </div>
-                  <div style={{display:'flex',alignItems:'center',gap:8}}>
-                    {status&&(
-                      <span style={{fontSize:11,padding:'3px 8px',borderRadius:4,background:status.bg,color:status.color,border:`0.5px solid ${status.color}44`,whiteSpace:'nowrap',fontWeight:'bold'}}>
-                        {status.icon} {status.label}
-                      </span>
-                    )}
-                    <button onClick={()=>delCl(cl.id)} style={{...btn,color:'#b91c1c',borderColor:'#fca5a5',padding:'4px 12px',fontSize:12}}>Remove</button>
-                  </div>
-                </div>
-                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(105px,1fr))',gap:7,marginBottom:10}}>
-                  {QTYS.map(([q,l])=>(
-                    <div key={q}><label style={lbl}>{l}</label><input type="number" value={cl.qtys[q]} min="0" style={inp} onChange={e=>uQty(cl.id,q,e.target.value)}/></div>
-                  ))}
-                </div>
-                <div>
-                  <div style={{fontSize:11,color:'#888',marginBottom:5}}>Bespoke <span style={{color:'#ccc'}}>— incl. shaker door priming if needed</span></div>
-                  {cl.bespoke.map((b,i)=>(
-                    <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 60px auto',gap:6,marginBottom:5,alignItems:'center'}}>
-                      <input placeholder="e.g. Prime shaker doors" value={b.desc} style={inp} onChange={e=>uB(cl.id,i,'desc',e.target.value)}/>
-                      <input type="number" value={b.mins} style={inp} onChange={e=>uB(cl.id,i,'mins',e.target.value)}/>
-                      <button onClick={()=>setClients(p=>p.map(c=>c.id===cl.id?{...c,bespoke:c.bespoke.filter((_,j)=>j!==i)}:c))} style={{...btn,padding:'4px 8px',fontSize:12,color:'#b91c1c',borderColor:'#fca5a5'}}>×</button>
+        {/* Helper to render a client order card */}
+        {(()=>{
+          function ClientOrderCard({cl}) {
+            const status=getOrderStatus(cl);
+            return (
+              <div style={{...card,borderLeft:`3px solid ${cl.col}`,padding:0,marginBottom:'0.75rem'}}>
+                <div style={{padding:'0.75rem 1rem'}}>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10,flexWrap:'wrap',gap:8}}>
+                    <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                      <Dot c={cl.col}/>
+                      <input placeholder="Client name" value={cl.name} onChange={e=>uCl(cl.id,'name',e.target.value)} style={{fontSize:16,fontWeight:'bold',border:'none',background:'transparent',width:160,fontFamily:'Georgia,serif',outline:'none'}}/>
+                      <input placeholder="Due / week" value={cl.date} onChange={e=>uCl(cl.id,'date',e.target.value)} style={{fontSize:14,border:'none',background:'transparent',color:'#888',width:100,fontFamily:'Georgia,serif',outline:'none'}}/>
+                      <select value={cl.unitType||'painted'} onChange={e=>uCl(cl.id,'unitType',e.target.value)}
+                        style={{fontSize:12,padding:'3px 7px',border:'0.5px solid #ddd',borderRadius:4,fontFamily:'Georgia,serif',background:'#f9f9f7',color:'#555',outline:'none'}}>
+                        {UNIT_TYPES.map(ut=><option key={ut.key} value={ut.key}>{ut.label}</option>)}
+                      </select>
+                      <input type="date" value={cl.targetDate||''} onChange={e=>uCl(cl.id,'targetDate',e.target.value)}
+                        style={{fontSize:14,border:'0.5px solid #e5e7eb',background:'#f9f9f7',color:'#555',borderRadius:4,padding:'3px 6px',fontFamily:'Georgia,serif',outline:'none'}}/>
                     </div>
-                  ))}
-                  <button onClick={()=>addB(cl.id)} style={{...btn,padding:'4px 12px',fontSize:12}}>+ Add bespoke</button>
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      {status&&<span style={{fontSize:11,padding:'3px 8px',borderRadius:4,background:status.bg,color:status.color,border:`0.5px solid ${status.color}44`,whiteSpace:'nowrap',fontWeight:'bold'}}>{status.icon} {status.label}</span>}
+                      <button onClick={()=>delCl(cl.id)} style={{...btn,color:'#b91c1c',borderColor:'#fca5a5',padding:'4px 12px',fontSize:12}}>Remove</button>
+                    </div>
+                  </div>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(100px,1fr))',gap:6,marginBottom:10}}>
+                    {QTYS.map(([q,l])=>(
+                      <div key={q}><label style={lbl}>{l}</label><input type="number" value={cl.qtys[q]} min="0" style={inp} onChange={e=>uQty(cl.id,q,e.target.value)}/></div>
+                    ))}
+                  </div>
+                  <div>
+                    {cl.bespoke.map((b,i)=>(
+                      <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 60px auto',gap:6,marginBottom:5,alignItems:'center'}}>
+                        <input placeholder="e.g. Prime shaker doors" value={b.desc} style={inp} onChange={e=>uB(cl.id,i,'desc',e.target.value)}/>
+                        <input type="number" value={b.mins} style={inp} onChange={e=>uB(cl.id,i,'mins',e.target.value)}/>
+                        <button onClick={()=>setClients(p=>p.map(c=>c.id===cl.id?{...c,bespoke:c.bespoke.filter((_,j)=>j!==i)}:c))} style={{...btn,padding:'4px 8px',fontSize:12,color:'#b91c1c',borderColor:'#fca5a5'}}>×</button>
+                      </div>
+                    ))}
+                    <button onClick={()=>addB(cl.id)} style={{...btn,padding:'4px 12px',fontSize:12}}>+ Add bespoke</button>
+                  </div>
                 </div>
               </div>
+            );
+          }
+
+          const sAtCap=simpleCapPct>=100, sNear=simpleCapPct>=85;
+          const cAtCap=complexCapPct>=100, cNear=complexCapPct>=85;
+          const sCol=sAtCap?'#b91c1c':sNear?'#92400e':'#166534';
+          const cCol=cAtCap?'#b91c1c':cNear?'#92400e':'#166534';
+
+          return (<>
+            {/* Simple stream capacity */}
+            <div style={{...card,borderTop:'3px solid #1D9E75',borderColor:sAtCap?'#dc2626':sNear?'#d97706':'#ddd',background:sAtCap?'#fef2f2':sNear?'#fffbeb':'#fff'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                <div>
+                  <div style={H}>Simple stream capacity</div>
+                  <div style={{fontSize:11,color:'#888'}}>Cabinet maker + assistant · {simpleClients.length} orders</div>
+                </div>
+                <div style={{fontSize:18,fontWeight:'bold',color:sCol}}>{simpleCapPct}%</div>
+              </div>
+              <div style={{height:10,background:'#eee',borderRadius:5,overflow:'hidden',marginBottom:8}}>
+                <div style={{height:'100%',width:`${Math.min(simpleCapPct,100)}%`,background:sAtCap?'#dc2626':sNear?'#d97706':'#1D9E75',borderRadius:5,transition:'width 0.3s'}}/>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(110px,1fr))',gap:8,marginBottom:10}}>
+                {[['Task hours',`${(simpleTotalOrder/60).toFixed(1)}h`,'#1a1a1a'],['Capacity',`${(simpleProdAvail/60).toFixed(1)}h`,sCol],[sAtCap?'Over':'Headroom',`${Math.abs(simpleRemain/60).toFixed(1)}h`,sCol],['Spray deducted',`${(simpleSprayMins/60).toFixed(1)}h`,'#7F77DD']].map(([l,v,c])=>(
+                  <div key={l} style={{background:'#f5f4f0',borderRadius:6,padding:'7px 10px'}}>
+                    <div style={{fontSize:10,color:'#888',textTransform:'uppercase',letterSpacing:'0.04em',marginBottom:2}}>{l}</div>
+                    <div style={{fontSize:15,fontWeight:'bold',color:c}}>{v}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{fontSize:11,color:'#7F77DD',marginBottom:10}}>↑ {(simpleSprayMins/60).toFixed(1)}h spray time (top coats + bars) deducted from your complex capacity</div>
+              {simpleClients.map(cl=><ClientOrderCard key={cl.id} cl={cl}/>)}
+              <button onClick={addSimpleClient} style={{...btn,borderColor:'#1D9E7544',color:'#1D9E75',padding:'6px 14px',fontSize:12}}>+ Add simple order</button>
             </div>
-          );
-        })}
+
+            {/* Complex stream capacity */}
+            <div style={{...card,borderTop:'3px solid #7F77DD',borderColor:cAtCap?'#dc2626':cNear?'#d97706':'#ddd',background:cAtCap?'#fef2f2':cNear?'#fffbeb':'#fff'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                <div>
+                  <div style={H}>Complex stream capacity</div>
+                  <div style={{fontSize:11,color:'#888'}}>Manager + Harry · {complexClients.length} orders · spray time from simple orders already deducted</div>
+                </div>
+                <div style={{fontSize:18,fontWeight:'bold',color:cCol}}>{complexCapPct}%</div>
+              </div>
+              <div style={{height:10,background:'#eee',borderRadius:5,overflow:'hidden',marginBottom:8}}>
+                <div style={{height:'100%',width:`${Math.min(complexCapPct,100)}%`,background:cAtCap?'#dc2626':cNear?'#d97706':'#7F77DD',borderRadius:5,transition:'width 0.3s'}}/>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(110px,1fr))',gap:8,marginBottom:10}}>
+                {[['Task hours',`${(complexTotalOrder/60).toFixed(1)}h`,'#1a1a1a'],['Capacity',`${(complexProdAvail/60).toFixed(1)}h`,cCol],[cAtCap?'Over':'Headroom',`${Math.abs(complexRemain/60).toFixed(1)}h`,cCol]].map(([l,v,c])=>(
+                  <div key={l} style={{background:'#f5f4f0',borderRadius:6,padding:'7px 10px'}}>
+                    <div style={{fontSize:10,color:'#888',textTransform:'uppercase',letterSpacing:'0.04em',marginBottom:2}}>{l}</div>
+                    <div style={{fontSize:15,fontWeight:'bold',color:c}}>{v}</div>
+                  </div>
+                ))}
+              </div>
+              {complexClients.map(cl=><ClientOrderCard key={cl.id} cl={cl}/>)}
+              <button onClick={addComplexClient} style={{...btn,borderColor:'#7F77DD44',color:'#7F77DD',padding:'6px 14px',fontSize:12}}>+ Add complex order</button>
+            </div>
+          </>);
+        })()}
 
         <div style={{display:'flex',gap:8,marginTop:'0.5rem',flexWrap:'wrap',alignItems:'center'}}>
-          <button onClick={addClient} disabled={atCap} style={{...btn,opacity:atCap?0.4:1}}>{atCap?'⚠ At capacity':'+ Add client order'}</button>
           {clients.length>0&&<button onClick={startDaily} style={btnP}>Go to daily dispatch →</button>}
         </div>
       </>}

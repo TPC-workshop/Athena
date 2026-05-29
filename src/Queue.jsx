@@ -483,7 +483,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     return mins;
   }
 
-  // Overhead pool — proportional split based on actual stream raw hours
+  // Overhead — split proportionally between streams based on their raw hours
   function getOverheadForStream(stream, month) {
     const wd = month.workingDays || workingDaysDefault;
     const simpleMins = streamRawMins('simple', month);
@@ -491,17 +491,9 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     const total = simpleMins + complexMins;
     if (total === 0) return 0;
     const frac = stream === 'simple' ? simpleMins / total : complexMins / total;
-    // Overhead pool members split proportionally
-    let poolMins = 0;
-    for (const key of activeKeys) {
-      if ((roleStreams && roleStreams[key]) !== 'overhead') continue;
-      const gross = getRoleHrs(key, wd);
-      const holiday = getHolidayDeduction(key, month, wd);
-      poolMins += Math.max(0, gross - holiday) * 60;
-    }
-    // Fixed overhead budgets also split proportionally
+    // Fixed overhead budgets split by stream fraction
     const fixedOverhead = ((parseFloat(mgmtOverhead) || 0) + (parseFloat(wsOverhead) || 0)) * 60;
-    return (fixedOverhead - poolMins * frac) * frac;
+    return fixedOverhead * frac;
   }
 
   function getMonthSimpleMins(month) {

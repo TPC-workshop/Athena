@@ -543,7 +543,14 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     if (!scheduled.length) return null;
     const last = scheduled[scheduled.length - 1];
     if (!last.projectedMonth || last.projectedMonth === 'No calendar set' || last.projectedMonth === 'Beyond calendar') return null;
-    const endMonth = new Date(last.projectedMonth);
+    // Parse "June 2026" style labels safely across all browsers including mobile Safari
+    const parts = last.projectedMonth.split(' ');
+    if (parts.length < 2) return null;
+    const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const monthIdx = months.indexOf(parts[0]);
+    const year = parseInt(parts[1]);
+    if (monthIdx === -1 || isNaN(year)) return null;
+    const endMonth = new Date(year, monthIdx + 1, 0); // last day of that month
     const weeks = Math.round((endMonth - new Date()) / (1000 * 60 * 60 * 24 * 7));
     return Math.max(0, weeks);
   }
@@ -654,8 +661,8 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
         {/* Lead time summary cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: '1rem' }}>
           {[
-            ['Simple', simpleLead !== null ? `${simpleLead}w` : '—', '#1D9E75', `${simpleOrders.length} order${simpleOrders.length !== 1 ? 's' : ''}`],
-            ['Complex', complexLead !== null ? `${complexLead}w` : '—', '#7F77DD', `${complexOrders.length} order${complexOrders.length !== 1 ? 's' : ''}`],
+            ['Simple', (simpleLead !== null && !isNaN(simpleLead)) ? `${simpleLead}w` : '—', '#1D9E75', `${simpleOrders.length} order${simpleOrders.length !== 1 ? 's' : ''}`],
+            ['Complex', (complexLead !== null && !isNaN(complexLead)) ? `${complexLead}w` : '—', '#7F77DD', `${complexOrders.length} order${complexOrders.length !== 1 ? 's' : ''}`],
             ['Finance', financeOrders.length ? `${financeOrders.length}` : '—', '#BA7517', `${(financeTotal / 60).toFixed(1)}h`],
           ].map(([l, v, c, sub]) => (
             <div key={l} style={{ background: '#fff', border: `0.5px solid ${c}44`, borderRadius: 8, padding: '0.75rem', borderTop: `3px solid ${c}`, minWidth: 0 }}>

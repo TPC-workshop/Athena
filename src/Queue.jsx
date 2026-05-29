@@ -389,10 +389,10 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   }
 
     function getMonthStreamMins(stream, month) {
-    // Use workingWeeks if set, otherwise fall back to workingDays/5
-    const ww = month.workingWeeks !== undefined ? parseFloat(month.workingWeeks) : (month.workingDays !== undefined ? parseInt(month.workingDays) / 5 : 4.2);
-    if (ww === 0) return 0;
-    const wd = ww * 5; // convert weeks to days for calculations
+    // Working days drives capacity, working weeks drives lead time counter
+    const wd = month.workingDays !== undefined ? parseInt(month.workingDays) : 21;
+    if (wd === 0) return 0;
+    // Hours available = team hours after holiday accrual
     let totalMins = 0;
     const teamInStream = queueTeam.filter(m => m.stream === stream);
     for (const m of teamInStream) {
@@ -400,26 +400,19 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
       const stdDay = parseFloat(m.stdDay) || 7;
       const daysWorked = wd * dpw / 5;
       const gross = stdDay * daysWorked;
-      // Pro-rated holiday accrual: 28 days × (dpw/5) entitlement ÷ (260×dpw/5) working days/year
-      const proRatedDays = 28 * (dpw / 5);
-      const workingDaysPerYear = 260 * dpw / 5;
-      const accrualPerDay = (proRatedDays * stdDay) / workingDaysPerYear;
-      const holiday = accrualPerDay * daysWorked;
+      // Holiday accrual = 10.77% of hours worked
+      const holiday = gross * 0.1077;
       totalMins += Math.max(0, gross - holiday) * 60;
     }
-    // Overhead: pro-rated by working days, split by stream fraction
-    const simpleMins = queueTeam.filter(m=>m.stream==='simple').reduce((a,m)=>{
-      const dpw=parseFloat(m.daysPerWeek)||5; const dw=wd*dpw/5;
-      return a+Math.max(0,(parseFloat(m.stdDay)||7)*dw)*60;
-    },0);
-    const complexMins = queueTeam.filter(m=>m.stream==='complex').reduce((a,m)=>{
-      const dpw=parseFloat(m.daysPerWeek)||5; const dw=wd*dpw/5;
-      return a+Math.max(0,(parseFloat(m.stdDay)||7)*dw)*60;
-    },0);
-    const totalRaw = simpleMins + complexMins;
-    const frac = totalRaw > 0 ? (stream==='simple' ? simpleMins/totalRaw : complexMins/totalRaw) : 0.5;
-    const fixedOverhead = ((parseFloat(mgmtOverhead)||0) + (parseFloat(wsOverhead)||0)) * 60 * (wd/21);
-    return Math.max(0, totalMins - fixedOverhead * frac);
+    // Overhead: ws overhead from simple pool, mgmt overhead from complex pool
+    // Pro-rated by working days (wd/21 of monthly budget)
+    const dayFrac = wd / 21;
+    if (stream === 'simple') {
+      totalMins -= (parseFloat(wsOverhead) || 0) * 60 * dayFrac;
+    } else {
+      totalMins -= (parseFloat(mgmtOverhead) || 0) * 60 * dayFrac;
+    }
+    return Math.max(0, totalMins);
   }
 
     function calcStream(orders, getCapFn) {
@@ -438,9 +431,8 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
         const available = cap - usedMins;
         if (available >= orderMins) {
           usedMins += orderMins;
-          // Store fraction of month used so lead time can be calculated precisely
-          const monthFrac = cap > 0 ? usedMins / cap : 1;
-          result.push({ ...order, projectedMonth: months[monthIdx].label, monthFrac, monthCap: cap });
+          const usedFrac = cap > 0 ? usedMins / cap : 1;
+          result.push({ ...order, projectedMonth: months[monthIdx].label, usedFrac });
           allocated = true;
           break;
         } else {
@@ -457,23 +449,20 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     if (!scheduled.length) return null;
     const last = scheduled[scheduled.length - 1];
     if (!last.projectedMonth || last.projectedMonth === 'No calendar set' || last.projectedMonth === 'Beyond calendar') return null;
-    const parts = last.projectedMonth.split(' ');
-    if (parts.length < 2) return null;
-    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-    const monthIdx = monthNames.indexOf(parts[0]);
-    const year = parseInt(parts[1]);
-    if (monthIdx === -1 || isNaN(year)) return null;
-    // Find the calendar month to get its working weeks
-    const calMonth = sortedMonths().find(m => m.label === last.projectedMonth);
-    const monthWw = calMonth ? (calMonth.workingWeeks !== undefined ? parseFloat(calMonth.workingWeeks) : (calMonth.workingDays !== undefined ? parseInt(calMonth.workingDays)/5 : 4.2)) : 4.2;
-    // How many weeks into the month does the last order finish?
-    const frac = last.monthFrac || 0.5;
-    const weeksIntoMonth = frac * monthWw;
-    // Count weeks from start of projected month to completion point
-    const monthStart = new Date(year, monthIdx, 1);
-    const completionDate = new Date(monthStart.getTime() + weeksIntoMonth * 7 * 24 * 60 * 60 * 1000);
-    const weeks = Math.round((completionDate - new Date()) / (1000 * 60 * 60 * 24 * 7));
-    return Math.max(0, weeks);
+    const months = sortedMonths();
+    // Sum up working weeks for all months up to and including the completion month
+    // For the completion month, use the fraction of that month consumed
+    let totalWeeks = 0;
+    for (const m of months) {
+      const mw = m.workingWeeks !== undefined ? parseFloat(m.workingWeeks) : (m.workingDays !== undefined ? parseInt(m.workingDays)/5 : 4.2);
+      if (m.label === last.projectedMonth) {
+        // Add only the fraction of this month that's used
+        totalWeeks += mw * (last.usedFrac || 0.5);
+        break;
+      }
+      totalWeeks += mw;
+    }
+    return Math.max(0, Math.round(totalWeeks));
   }
 
   const scheduledSimple = calcStream(simpleOrders, m => getMonthStreamMins('simple', m));
@@ -717,17 +706,14 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
                       </button>
                     </div>
                     {(()=>{
-                      const ww2 = m.workingWeeks !== undefined ? parseFloat(m.workingWeeks) : (m.workingDays !== undefined ? parseInt(m.workingDays)/5 : 4.2);
-                      const wd = ww2 * 5;
+                      const wd2 = m.workingDays !== undefined ? parseInt(m.workingDays) : 21;
                       let totalAccrual = 0;
                       queueTeam.forEach(tm => {
                         const dpw = parseFloat(tm.daysPerWeek) || 5;
                         const stdDay = parseFloat(tm.stdDay) || 7;
-                        const daysWorked = wd * dpw / 5;
-                        const proRatedDays = 28 * (dpw / 5);
-                        const workingDaysPerYear = 260 * dpw / 5;
-                        const accrualPerDay = (proRatedDays * stdDay) / workingDaysPerYear;
-                        totalAccrual += accrualPerDay * daysWorked;
+                        const daysWorked = wd2 * dpw / 5;
+                        const gross = stdDay * daysWorked;
+                        totalAccrual += gross * 0.1077;
                       });
                       return (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', background: '#f5f4f0', borderRadius: 4 }}>

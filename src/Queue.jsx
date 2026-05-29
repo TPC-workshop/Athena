@@ -485,7 +485,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     return mins;
   }
 
-  // Overhead — split proportionally between streams based on their raw hours
+  // Overhead — split proportionally between streams, pro-rated by working days
   function getOverheadForStream(stream, month) {
     const wd = month.workingDays || workingDaysDefault;
     const simpleMins = streamRawMins('simple', month);
@@ -493,8 +493,9 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     const total = simpleMins + complexMins;
     if (total === 0) return 0;
     const frac = stream === 'simple' ? simpleMins / total : complexMins / total;
-    // Fixed overhead budgets split by stream fraction
-    const fixedOverhead = ((parseFloat(mgmtOverhead) || 0) + (parseFloat(wsOverhead) || 0)) * 60;
+    // Pro-rate overhead by working days so a 2-day month doesn't get hit with a full month of overhead
+    const dayFrac = wd / (workingDaysDefault || 21);
+    const fixedOverhead = ((parseFloat(mgmtOverhead) || 0) + (parseFloat(wsOverhead) || 0)) * 60 * dayFrac;
     return fixedOverhead * frac;
   }
 

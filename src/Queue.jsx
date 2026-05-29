@@ -700,17 +700,28 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
         {/* Queue settings */}
         <div style={{ background: '#fff', border: '0.5px solid #ddd', borderRadius: 8, padding: '0.85rem 1rem', marginBottom: '1rem' }}>
           <div style={{ fontSize: 9, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.07em', color: '#888', marginBottom: 10 }}>Queue settings</div>
-          <div style={{ fontSize: 11, color: '#aaa', marginBottom: 10 }}>Simple and complex streams run independently — each uses its own team capacity from Plan settings.</div>
-          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          <div style={{ fontSize: 11, color: '#aaa', marginBottom: 10 }}>Simple and complex streams run independently. Overhead is deducted proportionally from each stream's capacity.</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 16 }}>
+            <div>
+              <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 3 }}>Management overhead (hrs/month)</label>
+              <input type="number" value={mgmtOverhead} min="0" step="0.5"
+                style={{ width: '100%', padding: '6px 8px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', fontSize: 16 }}
+                onChange={e => setMgmtOverhead(parseFloat(e.target.value) || 0)} />
+              <div style={{ fontSize: 10, color: '#aaa', marginTop: 3 }}>Management tasks, meetings, ordering etc.</div>
+            </div>
+            <div>
+              <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 3 }}>Workshop overhead (hrs/month)</label>
+              <input type="number" value={wsOverhead} min="0" step="0.5"
+                style={{ width: '100%', padding: '6px 8px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', fontSize: 16 }}
+                onChange={e => setWsOverhead(parseFloat(e.target.value) || 0)} />
+              <div style={{ fontSize: 10, color: '#aaa', marginTop: 3 }}>Workshop maintenance, cleaning, facilities etc.</div>
+            </div>
             <div>
               <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 3 }}>Complexity threshold (hrs)</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <input type="number" value={complexThreshold} min="5" max="200" step="1"
-                  style={{ width: 58, padding: '4px 8px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', fontSize: 16 }}
-                  onChange={e => setComplexThreshold(Math.max(1, parseFloat(e.target.value) || 30))} />
-                <span style={{ fontSize: 12, color: '#888' }}>hours — orders above this are flagged complex</span>
-              </div>
-              <div style={{ fontSize: 10, color: '#aaa', marginTop: 3 }}>Currently: under {complexThreshold}h = simple · {complexThreshold}h+ = complex</div>
+              <input type="number" value={complexThreshold} min="5" max="200" step="1"
+                style={{ width: '100%', padding: '6px 8px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', fontSize: 16 }}
+                onChange={e => setComplexThreshold(Math.max(1, parseFloat(e.target.value) || 30))} />
+              <div style={{ fontSize: 10, color: '#aaa', marginTop: 3 }}>Under {complexThreshold}h = simple · {complexThreshold}h+ = complex</div>
             </div>
           </div>
 

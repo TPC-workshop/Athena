@@ -743,46 +743,33 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
                         style={{ width: 56, padding: '3px 6px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', fontSize: 14 }}
                         onChange={e => setCalendarMonths(p => p.map(x => x.label === m.label ? { ...x, workingDays: parseInt(e.target.value) || 0 } : x))} />
                     </div>
-                    <div style={{ fontSize: 10, color: '#aaa', marginBottom: 4 }}>Holiday overrides — leave blank to use accrual estimate:</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-                      {[
-                        // Standard roles
-                        ...activeKeys.map(k => {
-                          const rd = ROLE_DEFS.find(r => r.key === k);
-                          if (!rd) return null;
-                          const rh = roleHours && roleHours[k];
-                          const stdDay = rh ? (parseFloat(rh.stdDay) || rd.stdDay) : rd.stdDay;
-                          const dpw = rh ? (parseFloat(rh.daysPerWeek) || rd.daysPerWeek || 5) : (rd.daysPerWeek || 5);
-                          const proRatedDays = 28 * (dpw / 5);
-                          const workingDaysPerYear = 260 * dpw / 5;
-                          const accrualPerDay = (proRatedDays * stdDay) / workingDaysPerYear;
-                          const accrual = accrualPerDay * (m.workingDays || workingDaysDefault);
-                          return { key: k, color: rd.color, label: rd.label, accrual };
-                        }),
-                        // Extra roles (Harry, Oscar, Theo etc.)
-                        ...extraRoles.map(er => {
-                          const dpw = parseFloat(er.daysPerWeek) || 5;
-                          const stdDay = parseFloat(er.stdDay) || 7;
-                          const proRatedDays = 28 * (dpw / 5);
-                          const workingDaysPerYear = 260 * dpw / 5;
-                          const accrualPerDay = (proRatedDays * stdDay) / workingDaysPerYear;
-                          const accrual = accrualPerDay * (m.workingDays || workingDaysDefault);
-                          return { key: er.key, color: er.color, label: er.label, accrual };
-                        }),
-                      ].filter(Boolean).map(({ key: k, color, label, accrual }) => (
-                        <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <Dot c={color} s={6} />
-                          <span style={{ fontSize: 10, color: '#888', minWidth: 60 }}>{label.split(' ')[0]}</span>
-                          <input type="number" placeholder={accrual.toFixed(1)}
-                            value={m.holiday?.[k] !== undefined ? m.holiday[k] : ''}
-                            min="0" step="0.5"
-                            style={{ width: 50, padding: '2px 4px', border: '0.5px solid #ccc', borderRadius: 3, fontFamily: 'Georgia,serif', fontSize: 12 }}
-                            onChange={e => setCalendarMonths(p => p.map(x => x.label === m.label ? {
-                              ...x, holiday: { ...x.holiday, [k]: e.target.value === '' ? undefined : parseFloat(e.target.value) || 0 }
-                            } : x))} />
+                    {(()=>{
+                      const wd = m.workingDays || workingDaysDefault;
+                      let totalAccrual = 0;
+                      activeKeys.forEach(k => {
+                        const rd = ROLE_DEFS.find(r => r.key === k);
+                        if (!rd) return;
+                        const rh = roleHours && roleHours[k];
+                        const stdDay = rh ? (parseFloat(rh.stdDay) || rd.stdDay) : rd.stdDay;
+                        const dpw = rh ? (parseFloat(rh.daysPerWeek) || rd.daysPerWeek || 5) : (rd.daysPerWeek || 5);
+                        const proRatedDays = 28 * (dpw / 5);
+                        const workingDaysPerYear = 260 * dpw / 5;
+                        totalAccrual += ((proRatedDays * stdDay) / workingDaysPerYear) * wd;
+                      });
+                      extraRoles.forEach(er => {
+                        const dpw = parseFloat(er.daysPerWeek) || 5;
+                        const stdDay = parseFloat(er.stdDay) || 7;
+                        const proRatedDays = 28 * (dpw / 5);
+                        const workingDaysPerYear = 260 * dpw / 5;
+                        totalAccrual += ((proRatedDays * stdDay) / workingDaysPerYear) * wd;
+                      });
+                      return (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', background: '#f5f4f0', borderRadius: 4 }}>
+                          <span style={{ fontSize: 10, color: '#bbb' }}>Holiday accrual (auto-calculated):</span>
+                          <span style={{ fontSize: 12, color: '#aaa', fontWeight: 'bold' }}>{totalAccrual.toFixed(1)}h</span>
                         </div>
-                      ))}
-                    </div>
+                      );
+                    })()}
                   </div>
                 );
               })}

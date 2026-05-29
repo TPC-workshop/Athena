@@ -176,6 +176,54 @@ const ClientSection = memo(function ClientSection({ title, color, tasks, src, ac
   );
 });
 
+// ── Client order card — lifted outside App to prevent remount on every keystroke
+const ClientOrderCard = memo(function ClientOrderCard({ cl, status, uCl, uQty, uB, setClients, delCl, UNIT_TYPES, QTYS, inp, btn, lbl }) {
+  return (
+    <div style={{background:'#fff',border:'0.5px solid #ddd',borderRadius:8,marginBottom:'0.75rem',borderLeft:`3px solid ${cl.col}`,overflow:'hidden'}}>
+      <div style={{padding:'0.75rem 1rem'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10,flexWrap:'wrap',gap:8}}>
+          <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+            <Dot c={cl.col}/>
+            <input placeholder="Client name" value={cl.name} onChange={e=>uCl(cl.id,'name',e.target.value)}
+              style={{fontSize:16,fontWeight:'bold',border:'none',background:'transparent',width:160,fontFamily:'Georgia,serif',outline:'none'}}/>
+            <input placeholder="Due / week" value={cl.date} onChange={e=>uCl(cl.id,'date',e.target.value)}
+              style={{fontSize:14,border:'none',background:'transparent',color:'#888',width:100,fontFamily:'Georgia,serif',outline:'none'}}/>
+            <select value={cl.unitType||'painted'} onChange={e=>uCl(cl.id,'unitType',e.target.value)}
+              style={{fontSize:12,padding:'3px 7px',border:'0.5px solid #ddd',borderRadius:4,fontFamily:'Georgia,serif',background:'#f9f9f7',color:'#555',outline:'none'}}>
+              {UNIT_TYPES.map(ut=><option key={ut.key} value={ut.key}>{ut.label}</option>)}
+            </select>
+            <input type="date" value={cl.targetDate||''} onChange={e=>uCl(cl.id,'targetDate',e.target.value)}
+              style={{fontSize:14,border:'0.5px solid #e5e7eb',background:'#f9f9f7',color:'#555',borderRadius:4,padding:'3px 6px',fontFamily:'Georgia,serif',outline:'none'}}/>
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            {status&&<span style={{fontSize:11,padding:'3px 8px',borderRadius:4,background:status.bg,color:status.color,border:`0.5px solid ${status.color}44`,whiteSpace:'nowrap',fontWeight:'bold'}}>{status.icon} {status.label}</span>}
+            <button onClick={()=>delCl(cl.id)} style={{...btn,color:'#b91c1c',borderColor:'#fca5a5',padding:'4px 12px',fontSize:12}}>Remove</button>
+          </div>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(100px,1fr))',gap:6,marginBottom:10}}>
+          {QTYS.map(([q,l])=>(
+            <div key={q}><label style={lbl}>{l}</label>
+              <input type="number" value={cl.qtys[q]||0} min="0" style={{...inp,fontSize:14}} onChange={e=>uQty(cl.id,q,e.target.value)}/>
+            </div>
+          ))}
+        </div>
+        <div>
+          {cl.bespoke.map((b,i)=>(
+            <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 60px auto',gap:6,marginBottom:5,alignItems:'center'}}>
+              <input placeholder="e.g. Prime shaker doors" value={b.desc} style={inp} onChange={e=>uB(cl.id,i,'desc',e.target.value)}/>
+              <input type="number" value={b.mins} style={inp} onChange={e=>uB(cl.id,i,'mins',e.target.value)}/>
+              <button onClick={()=>setClients(p=>p.map(c=>c.id===cl.id?{...c,bespoke:c.bespoke.filter((_,j)=>j!==i)}:c))}
+                style={{...btn,padding:'4px 8px',fontSize:12,color:'#b91c1c',borderColor:'#fca5a5'}}>×</button>
+            </div>
+          ))}
+          <button onClick={()=>setClients(p=>p.map(c=>c.id===cl.id?{...c,bespoke:[...c.bespoke,{desc:'',mins:60}]}:c))}
+            style={{...btn,padding:'4px 12px',fontSize:12}}>+ Add bespoke</button>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 // Overhead countdown bar component
 function OverheadBar({ label, color, budgetHrs, doneMins, adHocMins }) {
   const budgetMins = (parseFloat(budgetHrs)||0) * 60;
@@ -457,10 +505,14 @@ export default function App() {
     return tasks;
   }
 
+  // Extra-role aware label/color lookup
+  function allRoleLabel(k) { const er=extraRoles.find(r=>r.key===k); return er?er.label:rLabel(k); }
+  function allRoleColor(k) { const er=extraRoles.find(r=>r.key===k); return er?er.color:rColor(k); }
+
   function getPersonText(k) {
     const tasks=getPersonTasks(k); if(!tasks.length)return '';
     const total=tasks.reduce((s,t)=>s+t.m,0);
-    let lines=[`ATHENA — Daily Task List`,`${rLabel(k)}${dayDate?' | '+dayDate:''}`,`Total: ${tasks.length} tasks | ${(total/60).toFixed(1)} hrs`,`═════════════════════════════════════════════════`,``];
+    let lines=[`ATHENA — Daily Task List`,`${allRoleLabel(k)}${dayDate?' | '+dayDate:''}`,`Total: ${tasks.length} tasks | ${(total/60).toFixed(1)} hrs`,`═════════════════════════════════════════════════`,``];
     let cur='';
     for(const t of tasks){
       if(t.clientName!==cur){if(cur){lines.push('');lines.push('');}lines.push(t.clientName.toUpperCase());lines.push('─────────────────────────────────────────────────');cur=t.clientName;}
@@ -667,50 +719,7 @@ export default function App() {
         <OverheadBar label="Management overhead" color="#7F77DD" budgetHrs={mgmtOverheadBudget} doneMins={mgmtDoneMins} adHocMins={mgmtAdHocMins}/>
         <OverheadBar label="Workshop overhead" color="#888" budgetHrs={wsOverheadBudget} doneMins={wsDoneMins} adHocMins={wsAdHocMins}/>
 
-        {/* Helper to render a client order card */}
         {(()=>{
-          function ClientOrderCard({cl}) {
-            const status=getOrderStatus(cl);
-            return (
-              <div style={{...card,borderLeft:`3px solid ${cl.col}`,padding:0,marginBottom:'0.75rem'}}>
-                <div style={{padding:'0.75rem 1rem'}}>
-                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10,flexWrap:'wrap',gap:8}}>
-                    <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-                      <Dot c={cl.col}/>
-                      <input placeholder="Client name" value={cl.name} onChange={e=>uCl(cl.id,'name',e.target.value)} style={{fontSize:16,fontWeight:'bold',border:'none',background:'transparent',width:160,fontFamily:'Georgia,serif',outline:'none'}}/>
-                      <input placeholder="Due / week" value={cl.date} onChange={e=>uCl(cl.id,'date',e.target.value)} style={{fontSize:14,border:'none',background:'transparent',color:'#888',width:100,fontFamily:'Georgia,serif',outline:'none'}}/>
-                      <select value={cl.unitType||'painted'} onChange={e=>uCl(cl.id,'unitType',e.target.value)}
-                        style={{fontSize:12,padding:'3px 7px',border:'0.5px solid #ddd',borderRadius:4,fontFamily:'Georgia,serif',background:'#f9f9f7',color:'#555',outline:'none'}}>
-                        {UNIT_TYPES.map(ut=><option key={ut.key} value={ut.key}>{ut.label}</option>)}
-                      </select>
-                      <input type="date" value={cl.targetDate||''} onChange={e=>uCl(cl.id,'targetDate',e.target.value)}
-                        style={{fontSize:14,border:'0.5px solid #e5e7eb',background:'#f9f9f7',color:'#555',borderRadius:4,padding:'3px 6px',fontFamily:'Georgia,serif',outline:'none'}}/>
-                    </div>
-                    <div style={{display:'flex',alignItems:'center',gap:8}}>
-                      {status&&<span style={{fontSize:11,padding:'3px 8px',borderRadius:4,background:status.bg,color:status.color,border:`0.5px solid ${status.color}44`,whiteSpace:'nowrap',fontWeight:'bold'}}>{status.icon} {status.label}</span>}
-                      <button onClick={()=>delCl(cl.id)} style={{...btn,color:'#b91c1c',borderColor:'#fca5a5',padding:'4px 12px',fontSize:12}}>Remove</button>
-                    </div>
-                  </div>
-                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(100px,1fr))',gap:6,marginBottom:10}}>
-                    {QTYS.map(([q,l])=>(
-                      <div key={q}><label style={lbl}>{l}</label><input type="number" value={cl.qtys[q]} min="0" style={inp} onChange={e=>uQty(cl.id,q,e.target.value)}/></div>
-                    ))}
-                  </div>
-                  <div>
-                    {cl.bespoke.map((b,i)=>(
-                      <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 60px auto',gap:6,marginBottom:5,alignItems:'center'}}>
-                        <input placeholder="e.g. Prime shaker doors" value={b.desc} style={inp} onChange={e=>uB(cl.id,i,'desc',e.target.value)}/>
-                        <input type="number" value={b.mins} style={inp} onChange={e=>uB(cl.id,i,'mins',e.target.value)}/>
-                        <button onClick={()=>setClients(p=>p.map(c=>c.id===cl.id?{...c,bespoke:c.bespoke.filter((_,j)=>j!==i)}:c))} style={{...btn,padding:'4px 8px',fontSize:12,color:'#b91c1c',borderColor:'#fca5a5'}}>×</button>
-                      </div>
-                    ))}
-                    <button onClick={()=>addB(cl.id)} style={{...btn,padding:'4px 12px',fontSize:12}}>+ Add bespoke</button>
-                  </div>
-                </div>
-              </div>
-            );
-          }
-
           const sAtCap=simpleCapPct>=100, sNear=simpleCapPct>=85;
           const cAtCap=complexCapPct>=100, cNear=complexCapPct>=85;
           const sCol=sAtCap?'#b91c1c':sNear?'#92400e':'#166534';
@@ -738,7 +747,7 @@ export default function App() {
                 ))}
               </div>
               <div style={{fontSize:11,color:'#7F77DD',marginBottom:10}}>↑ {(simpleSprayMins/60).toFixed(1)}h spray time (top coats + bars) deducted from your complex capacity</div>
-              {simpleClients.map(cl=><ClientOrderCard key={cl.id} cl={cl}/>)}
+              {simpleClients.map(cl=><ClientOrderCard key={cl.id} cl={cl} status={getOrderStatus(cl)} uCl={uCl} uQty={uQty} uB={uB} setClients={setClients} delCl={delCl} UNIT_TYPES={UNIT_TYPES} QTYS={QTYS} inp={inp} btn={btn} lbl={lbl}/>)}
               <button onClick={addSimpleClient} style={{...btn,borderColor:'#1D9E7544',color:'#1D9E75',padding:'6px 14px',fontSize:12}}>+ Add simple order</button>
             </div>
 
@@ -762,7 +771,7 @@ export default function App() {
                   </div>
                 ))}
               </div>
-              {complexClients.map(cl=><ClientOrderCard key={cl.id} cl={cl}/>)}
+              {complexClients.map(cl=><ClientOrderCard key={cl.id} cl={cl} status={getOrderStatus(cl)} uCl={uCl} uQty={uQty} uB={uB} setClients={setClients} delCl={delCl} UNIT_TYPES={UNIT_TYPES} QTYS={QTYS} inp={inp} btn={btn} lbl={lbl}/>)}
               <button onClick={addComplexClient} style={{...btn,borderColor:'#7F77DD44',color:'#7F77DD',padding:'6px 14px',fontSize:12}}>+ Add complex order</button>
             </div>
           </>);
@@ -787,15 +796,15 @@ export default function App() {
           </div>
           <div style={H}>Hours available today</div>
           <div style={{display:'grid',gap:6}}>
-            {activeRoles.map(rd=>{
+            {activeRoles.map(rd=>{ const rdLabel=allRoleLabel(rd.key); const rdColor=allRoleColor(rd.key);
               const assigned=getAssignedMins(rd.key);
               const budget=(parseFloat(dayHrs[rd.key])||0)*60;
               const pct=budget>0?Math.round(assigned/budget*100):0;
               const over=budget>0&&assigned>budget+5;
               const col=over?'#b91c1c':pct>=90?'#92400e':'#166534';
               return(
-                <div key={rd.key} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',background:'#fafaf8',border:`0.5px solid ${rd.color}44`,borderRadius:6,flexWrap:'wrap'}}>
-                  <Dot c={rd.color}/><span style={{fontSize:13,minWidth:145}}>{rd.label}</span>
+                <div key={rd.key} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',background:'#fafaf8',border:`0.5px solid ${rdColor}44`,borderRadius:6,flexWrap:'wrap'}}>
+                  <Dot c={rdColor}/><span style={{fontSize:13,minWidth:145}}>{rdLabel}</span>
                   <input type="number" value={dayHrs[rd.key]} min="0" max="12" step="0.5" onChange={e=>setDayHrs(p=>({...p,[rd.key]:e.target.value}))}
                     style={{width:62,padding:'4px 6px',border:'0.5px solid #ccc',borderRadius:4,fontFamily:'Georgia,serif',fontSize:16}}/>
                   <span style={{fontSize:11,color:'#888'}}>hrs</span>
@@ -882,23 +891,27 @@ export default function App() {
           <div style={H}>Team sheets — {dayDate||'today'}</div>
           <p style={{fontSize:12,color:'#888',fontStyle:'italic',marginBottom:10}}>Only assigned tasks. Click box to select all, copy, paste into Google Docs.</p>
           <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-            {activeRoles.filter(rd=>getPersonTasks(rd.key).length>0).map(rd=>(
-              <button key={rd.key} onClick={()=>setActiveSheet(activeSheet===rd.key?null:rd.key)}
-                style={{padding:'8px 16px',border:`0.5px solid ${rd.color}`,borderRadius:4,background:activeSheet===rd.key?rd.color:'#fff',color:activeSheet===rd.key?'#fff':rd.color,fontFamily:'Georgia,serif',fontSize:13,cursor:'pointer'}}>
-                {rd.label} ({getPersonTasks(rd.key).length})
-              </button>
-            ))}
+            {activeRoles.filter(rd=>getPersonTasks(rd.key).length>0).map(rd=>{
+              const col=allRoleColor(rd.key); const lbl=allRoleLabel(rd.key);
+              return(
+                <button key={rd.key} onClick={()=>setActiveSheet(activeSheet===rd.key?null:rd.key)}
+                  style={{padding:'8px 16px',border:`0.5px solid ${col}`,borderRadius:4,background:activeSheet===rd.key?col:'#fff',color:activeSheet===rd.key?'#fff':col,fontFamily:'Georgia,serif',fontSize:13,cursor:'pointer'}}>
+                  {lbl} ({getPersonTasks(rd.key).length})
+                </button>
+              );
+            })}
             {activeRoles.every(rd=>getPersonTasks(rd.key).length===0)&&<span style={{fontSize:12,color:'#bbb',fontStyle:'italic'}}>No tasks assigned yet.</span>}
           </div>
         </div>
         {activeSheet&&(()=>{
-          const rd=ROLE_DEFS.find(r=>r.key===activeSheet);
+          const rdColor=allRoleColor(activeSheet);
+          const rdLabel=allRoleLabel(activeSheet);
           const tasks=getPersonTasks(activeSheet);
           const total=tasks.reduce((s,t)=>s+t.m,0);
           return(
-            <div style={{...card,borderTop:`3px solid ${rd.color}`}}>
+            <div style={{...card,borderTop:`3px solid ${rdColor}`}}>
               <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
-                <Dot c={rd.color} s={11}/><span style={{fontSize:15,fontWeight:'bold'}}>{rd.label}</span>
+                <Dot c={rdColor} s={11}/><span style={{fontSize:15,fontWeight:'bold'}}>{rdLabel}</span>
                 <span style={{fontSize:11,color:'#888'}}>— {tasks.length} tasks · {(total/60).toFixed(1)}h</span>
               </div>
               <textarea readOnly value={getPersonText(activeSheet)} onClick={e=>e.target.select()}

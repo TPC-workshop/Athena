@@ -432,6 +432,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
         if (available >= orderMins) {
           usedMins += orderMins;
           const usedFrac = cap > 0 ? usedMins / cap : 1;
+          console.log('Order', order.name, '-> month', months[monthIdx].label, 'usedFrac', usedFrac);
           result.push({ ...order, projectedMonth: months[monthIdx].label, usedFrac });
           allocated = true;
           break;
@@ -465,6 +466,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
       }
       totalWeeks += mw;
     }
+    console.log('Lead calc: last=', last.projectedMonth, 'usedFrac=', last.usedFrac, 'totalWeeks=', totalWeeks);
     return Math.max(0, Math.round(totalWeeks));
   }
 

@@ -292,35 +292,22 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   const [qCount, setQCount] = useState(0);
   const [calendarMonths, setCalendarMonths] = useState([]);
   const [overtimePool, setOvertimePool] = useState(0);
-  const [complexRatio, setComplexRatio] = useState(6);
   const [complexThreshold, setComplexThreshold] = useState(30);
   const [addingTo, setAddingTo] = useState(null);
   const [expandedMonths, setExpandedMonths] = useState(false);
 
-  const [activeKeys, setActiveKeys] = useState(propActiveKeys || ['manager', 'maker1', 'assistant']);
-  const [extraRoles, setExtraRoles] = useState([]);
-  const [roleStreams, setRoleStreams] = useState({manager:'complex',maker1:'simple',maker2:'simple',painter:'overhead',assistant:'simple'});
-  const [roleHours, setRoleHours] = useState({});
-  const [planHoliday, setPlanHoliday] = useState({});
-  const [planMonthName, setPlanMonthName] = useState('');
-  const [workingDaysDefault, setWorkingDaysDefault] = useState(propWorkingDays || 21);
-  const [mgmtOverhead, setMgmtOverhead] = useState(propMgmt || 20);
-  const [wsOverhead, setWsOverhead] = useState(propWs || 28);
+  // Self-contained queue team — completely independent from Plan
+  const [queueTeam, setQueueTeam] = useState([
+    { id:'qt_manager',  name:'Manager',       stdDay:7.5, daysPerWeek:5, stream:'complex' },
+    { id:'qt_maker1',   name:'Cabinet maker', stdDay:7,   daysPerWeek:5, stream:'simple'  },
+    { id:'qt_assistant',name:'Assistant',     stdDay:7,   daysPerWeek:5, stream:'simple'  },
+  ]);
+  const [mgmtOverhead, setMgmtOverhead] = useState(20);
+  const [wsOverhead, setWsOverhead] = useState(28);
 
   useEffect(() => {
     if (!authed) return;
-    Promise.all([apiLoadPlan(), apiLoadQueue()]).then(([plan, queue]) => {
-      // Plan data — team config only
-      if (plan.activeKeys) setActiveKeys(plan.activeKeys);
-      if (plan.extraRoles) setExtraRoles(plan.extraRoles);
-      if (plan.holiday) setPlanHoliday(plan.holiday);
-      if (plan.monthName) setPlanMonthName(plan.monthName);
-      if (plan.workingDays) setWorkingDaysDefault(plan.workingDays);
-      if (plan.mgmtOverheadBudget !== undefined) setMgmtOverhead(plan.mgmtOverheadBudget);
-      if (plan.wsOverheadBudget !== undefined) setWsOverhead(plan.wsOverheadBudget);
-      if (plan.roleStreams) setRoleStreams(plan.roleStreams);
-      if (plan.roleHours) setRoleHours(plan.roleHours);
-      // Queue data — orders and settings only
+    apiLoadQueue().then(queue => {
       if (queue.simpleOrders) setSimpleOrders(queue.simpleOrders);
       if (queue.complexOrders) setComplexOrders(queue.complexOrders);
       if (queue.financeOrders) setFinanceOrders(queue.financeOrders);
@@ -328,6 +315,9 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
       if (queue.calendarMonths) setCalendarMonths(queue.calendarMonths);
       if (queue.overtimePool !== undefined) setOvertimePool(queue.overtimePool);
       if (queue.complexThreshold !== undefined) setComplexThreshold(queue.complexThreshold);
+      if (queue.queueTeam && queue.queueTeam.length) setQueueTeam(queue.queueTeam);
+      if (queue.mgmtOverhead !== undefined) setMgmtOverhead(queue.mgmtOverhead);
+      if (queue.wsOverhead !== undefined) setWsOverhead(queue.wsOverhead);
       initialLoadDone.current = true;
       setLoading(false);
     }).catch(() => { initialLoadDone.current = true; setLoading(false); });
@@ -340,7 +330,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     saveTimer.current = setTimeout(async () => {
       setSaving(true);
       // Save ONLY queue data — never touches Plan state
-      await apiSaveQueue({ simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexThreshold });
+      await apiSaveQueue({ simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexThreshold, queueTeam, mgmtOverhead, wsOverhead });
       setSaving(false);
       setSaveMsg('✓ Saved');
       setTimeout(() => setSaveMsg(''), 3000);
@@ -352,172 +342,43 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     // Skip save if this change was caused by ensureMonths adding template months
     if (ensureMonthsRan.current) { ensureMonthsRan.current = false; return; }
     triggerSave.current();
-  }, [simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexThreshold]);
+  }, [simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexThreshold, queueTeam, mgmtOverhead, wsOverhead]);
 
   // ── Calendar ───────────────────────────────────────────────────────────────
 
-  // Is this calendar month the same as the current Plan month?
-  function isPlanMonth(monthLabel) {
-    if (!planMonthName) return false;
-    return monthLabel.trim().toLowerCase() === planMonthName.trim().toLowerCase();
-  }
-
-  function getMonthProductionMins(month) {
+  function getMonthStreamMins(stream, month) {
+    const wd = month.workingDays !== undefined ? parseInt(month.workingDays) : 21;
+    if (wd === 0) return 0;
     let totalMins = 0;
-    const wd = (month.workingDays !== undefined && month.workingDays !== null) ? month.workingDays : workingDaysDefault;
-    const usePlanHoliday = isPlanMonth(month.label);
-
-    for (const key of activeKeys) {
-      const rd = ROLE_DEFS.find(r => r.key === key);
-      if (!rd) continue;
-      const dpw = rd.daysPerWeek || 5;
-      const grossHrs = rd.stdDay * (wd * dpw / 5);
-      const accrual = getAccrualPerDay(rd) * wd;
-      // Priority: 1) calendar month override, 2) Plan holiday if same month, 3) accrual estimate
-      let holidayHrs;
-      if (month.holiday && month.holiday[key] !== undefined) {
-        holidayHrs = parseFloat(month.holiday[key]); // calendar override
-      } else if (usePlanHoliday && planHoliday[key] !== undefined) {
-        holidayHrs = parseFloat(planHoliday[key]);   // actual from Plan
-      } else {
-        holidayHrs = accrual;                         // accrual estimate
-      }
-      totalMins += Math.max(0, grossHrs - holidayHrs) * 60;
-    }
-    // Extra roles from Plan (e.g. Harry) — use their holiday field directly
-    for (const er of extraRoles) {
-      const dpw = parseFloat(er.daysPerWeek) || 5;
-      const grossHrs = (parseFloat(er.stdDay)||7) * (wd * dpw / 5);
-      const accrual = getAccrualPerDay({stdDay: parseFloat(er.stdDay)||7, daysPerWeek: dpw}) * wd;
-      const holidayHrs = (month.holiday && month.holiday[er.key] !== undefined)
-        ? parseFloat(month.holiday[er.key])
-        : (parseFloat(er.holiday) || accrual);
-      totalMins += Math.max(0, grossHrs - holidayHrs) * 60;
-    }
-    const overheadMins = ((parseFloat(mgmtOverhead) || 0) + (parseFloat(wsOverhead) || 0)) * 60;
-    return Math.max(0, totalMins - overheadMins);
-  }
-
-  function generateMonthLabel(offset) {
-    const d = new Date();
-    d.setDate(1);
-    d.setMonth(d.getMonth() + offset);
-    return d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-  }
-
-  function ensureMonths(n = 18) {
-    ensureMonthsRan.current = true;
-    setCalendarMonths(p => {
-      const merged = [...p];
-      for (let i = 0; i < n; i++) {
-        const label = generateMonthLabel(i);
-        if (!merged.find(x => x.label === label)) merged.push({ label, workingDays: 21, holiday: {} });
-      }
-      return merged;
-    });
-  }
-
-  useEffect(() => { if (authed && !loading) ensureMonths(18); }, [authed, loading]);
-
-  function sortedMonths() {
-    return [...calendarMonths].sort((a, b) => new Date(a.label) - new Date(b.label));
-  }
-
-  // ── Scheduling ─────────────────────────────────────────────────────────────
-  // Simple and complex streams are fully independent — each has its own capacity pool.
-  // Simple capacity = simple team members (maker + assistant).
-  // Complex capacity = complex team members (manager + Harry).
-  // Overhead pool members add to total but are distributed proportionally.
-  // No ratio — streams don't share capacity.
-
-  // Helper: get hours for a standard role using roleHours overrides from Plan
-  function getRoleHrs(key, wd) {
-    const rd = ROLE_DEFS.find(r => r.key === key);
-    if (!rd) return 0;
-    const rh = roleHours && roleHours[key];
-    const stdDay = rh ? (parseFloat(rh.stdDay) || rd.stdDay) : rd.stdDay;
-    const dpw = rh ? (parseFloat(rh.daysPerWeek) || rd.daysPerWeek || 5) : (rd.daysPerWeek || 5);
-    return stdDay * (wd * dpw / 5);
-  }
-
-  // Helper: get accrual for a role using actual h/day and d/wk
-  function getRoleAccrual(key, wd) {
-    const rd = ROLE_DEFS.find(r => r.key === key);
-    if (!rd) return 0;
-    const rh = roleHours && roleHours[key];
-    const stdDay = rh ? (parseFloat(rh.stdDay) || rd.stdDay) : rd.stdDay;
-    const dpw = rh ? (parseFloat(rh.daysPerWeek) || rd.daysPerWeek || 5) : (rd.daysPerWeek || 5);
-    const daysWorked = wd * dpw / 5;
-    const proRatedDays = 28 * (dpw / 5);
-    const workingDaysPerYear = 260 * dpw / 5;
-    const accrualPerDay = (proRatedDays * stdDay) / workingDaysPerYear;
-    return accrualPerDay * daysWorked; // accrue only on days actually worked
-  }
-
-  // Helper: get holiday deduction for a role in a given month
-  function getHolidayDeduction(key, month, wd) {
-    // Priority: 1) calendar month override, 2) plan holiday if same month, 3) accrual
-    if (month.holiday && month.holiday[key] !== undefined) return parseFloat(month.holiday[key]);
-    if (isPlanMonth(month.label) && planHoliday[key] !== undefined) return parseFloat(planHoliday[key]);
-    return getRoleAccrual(key, wd);
-  }
-
-  // Calculate raw mins for a stream (before overhead deduction)
-  function streamRawMins(stream, month) {
-    const wd = (month.workingDays !== undefined && month.workingDays !== null) ? month.workingDays : workingDaysDefault;
-    let mins = 0;
-    // Standard roles
-    for (const key of activeKeys) {
-      if ((roleStreams && roleStreams[key]) !== stream) continue;
-      const gross = getRoleHrs(key, wd);
-      const holiday = getHolidayDeduction(key, month, wd);
-      mins += Math.max(0, gross - holiday) * 60;
-    }
-    // Extra roles (from Plan — Harry etc.)
-    for (const er of extraRoles) {
-      if ((er.stream || 'complex') !== stream) continue;
-      const dpw = parseFloat(er.daysPerWeek) || 5;
-      const stdDay = parseFloat(er.stdDay) || 7;
-      const daysWorked = wd * dpw / 5; // actual days this person works in the month
+    const teamInStream = queueTeam.filter(m => m.stream === stream);
+    for (const m of teamInStream) {
+      const dpw = parseFloat(m.daysPerWeek) || 5;
+      const stdDay = parseFloat(m.stdDay) || 7;
+      const daysWorked = wd * dpw / 5;
       const gross = stdDay * daysWorked;
+      // Pro-rated holiday accrual: 28 days × (dpw/5) entitlement ÷ (260×dpw/5) working days/year
       const proRatedDays = 28 * (dpw / 5);
       const workingDaysPerYear = 260 * dpw / 5;
       const accrualPerDay = (proRatedDays * stdDay) / workingDaysPerYear;
-      const holiday = (month.holiday && month.holiday[er.key] !== undefined)
-        ? parseFloat(month.holiday[er.key])
-        : accrualPerDay * daysWorked; // accrue only on days actually worked
-      mins += Math.max(0, gross - holiday) * 60;
+      const holiday = accrualPerDay * daysWorked;
+      totalMins += Math.max(0, gross - holiday) * 60;
     }
-    return mins;
+    // Overhead: pro-rated by working days, split by stream fraction
+    const simpleMins = queueTeam.filter(m=>m.stream==='simple').reduce((a,m)=>{
+      const dpw=parseFloat(m.daysPerWeek)||5; const dw=wd*dpw/5;
+      return a+Math.max(0,(parseFloat(m.stdDay)||7)*dw)*60;
+    },0);
+    const complexMins = queueTeam.filter(m=>m.stream==='complex').reduce((a,m)=>{
+      const dpw=parseFloat(m.daysPerWeek)||5; const dw=wd*dpw/5;
+      return a+Math.max(0,(parseFloat(m.stdDay)||7)*dw)*60;
+    },0);
+    const totalRaw = simpleMins + complexMins;
+    const frac = totalRaw > 0 ? (stream==='simple' ? simpleMins/totalRaw : complexMins/totalRaw) : 0.5;
+    const fixedOverhead = ((parseFloat(mgmtOverhead)||0) + (parseFloat(wsOverhead)||0)) * 60 * (wd/21);
+    return Math.max(0, totalMins - fixedOverhead * frac);
   }
 
-  // Overhead — split proportionally between streams, pro-rated by working days
-  function getOverheadForStream(stream, month) {
-    const wd = (month.workingDays !== undefined && month.workingDays !== null) ? month.workingDays : workingDaysDefault;
-    const simpleMins = streamRawMins('simple', month);
-    const complexMins = streamRawMins('complex', month);
-    const total = simpleMins + complexMins;
-    if (total === 0) return 0;
-    const frac = stream === 'simple' ? simpleMins / total : complexMins / total;
-    // Pro-rate overhead by working days — always use a standard 21-day month as the base
-    const dayFrac = wd / 21;
-    const fixedOverhead = ((parseFloat(mgmtOverhead) || 0) + (parseFloat(wsOverhead) || 0)) * 60 * dayFrac;
-    return fixedOverhead * frac;
-  }
-
-  function getMonthSimpleMins(month) {
-    const raw = streamRawMins('simple', month);
-    const overhead = getOverheadForStream('simple', month);
-    return Math.max(0, raw - overhead);
-  }
-
-  function getMonthComplexMins(month) {
-    const raw = streamRawMins('complex', month);
-    const overhead = getOverheadForStream('complex', month);
-    return Math.max(0, raw - overhead);
-  }
-
-  function calcStream(orders, getCapFn) {
+    function calcStream(orders, getCapFn) {
     const months = sortedMonths();
     if (!months.length) return orders.map(o => ({ ...o, projectedMonth: 'No calendar set' }));
     const result = [];
@@ -562,8 +423,8 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     return Math.max(0, weeks);
   }
 
-  const scheduledSimple = calcStream(simpleOrders, getMonthSimpleMins);
-  const scheduledComplex = calcStream(complexOrders, getMonthComplexMins);
+  const scheduledSimple = calcStream(simpleOrders, m => getMonthStreamMins('simple', m));
+  const scheduledComplex = calcStream(complexOrders, m => getMonthStreamMins('complex', m));
   const simpleLead = calcLeadTimeWeeks(scheduledSimple);
   const complexLead = calcLeadTimeWeeks(scheduledComplex);
 
@@ -602,7 +463,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
 
   // ── Backup / restore ─────────────────────────────────────────────────────
   function exportBackup() {
-    const data = { simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexRatio, complexThreshold, exportedAt: new Date().toISOString() };
+    const data = { simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexThreshold, exportedAt: new Date().toISOString() };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -625,7 +486,6 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
         if (data.qCount) setQCount(data.qCount);
         if (data.calendarMonths) setCalendarMonths(data.calendarMonths);
         if (data.overtimePool !== undefined) setOvertimePool(data.overtimePool);
-        if (data.complexRatio !== undefined) setComplexRatio(data.complexRatio);
         if (data.complexThreshold !== undefined) setComplexThreshold(data.complexThreshold);
         alert('Queue restored successfully from backup.');
       } catch { alert('Could not read backup file — make sure it is a valid Athena queue backup.'); }
@@ -681,27 +541,51 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
           ))}
         </div>
 
-        {/* Team capacity */}
+        {/* Team capacity — self-contained, independent from Plan */}
         <div style={card}>
-          <div style={H}>Active team — capacity feeds from workshop settings</div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-            {activeKeys.map(k => {
-              const rd = ROLE_DEFS.find(r => r.key === k);
-              if (!rd) return null;
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div style={H}>Queue team</div>
+            <button onClick={() => setQueueTeam(p => [...p, { id: `qt_${Date.now()}`, name: 'New member', stdDay: 7, daysPerWeek: 5, stream: 'simple' }])}
+              style={{ ...btn, padding: '4px 12px', fontSize: 12 }}>+ Add</button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 8 }}>
+            {queueTeam.map((m, i) => {
+              const streamColors = { simple: '#1D9E75', complex: '#7F77DD', overhead: '#BA7517' };
+              const sc = streamColors[m.stream] || '#888';
               return (
-                <span key={k} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 4, background: rd.color + '18', color: rd.color, border: `0.5px solid ${rd.color}44` }}>
-                  <Dot c={rd.color} s={7} /> {rd.label}
-                </span>
+                <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', border: `0.5px solid ${sc}33`, borderRadius: 6, background: '#fafaf8', flexWrap: 'wrap' }}>
+                  <Dot c={sc} s={8} />
+                  <input value={m.name} onChange={e => setQueueTeam(p => p.map((x,j)=>j===i?{...x,name:e.target.value}:x))}
+                    style={{ fontSize: 13, border: 'none', background: 'transparent', width: 110, fontFamily: 'Georgia,serif', outline: 'none', fontWeight: 'bold' }} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                    <label style={{ fontSize: 10, color: '#aaa' }}>h/d</label>
+                    <input type="number" value={m.stdDay} min="0.5" max="12" step="0.5"
+                      onChange={e => setQueueTeam(p => p.map((x,j)=>j===i?{...x,stdDay:parseFloat(e.target.value)||7}:x))}
+                      style={{ width: 44, padding: '3px 4px', border: '0.5px solid #ccc', borderRadius: 3, fontFamily: 'Georgia,serif', fontSize: 14 }} />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                    <label style={{ fontSize: 10, color: '#aaa' }}>d/wk</label>
+                    <input type="number" value={m.daysPerWeek} min="0.5" max="7" step="0.5"
+                      onChange={e => setQueueTeam(p => p.map((x,j)=>j===i?{...x,daysPerWeek:parseFloat(e.target.value)||5}:x))}
+                      style={{ width: 40, padding: '3px 4px', border: '0.5px solid #ccc', borderRadius: 3, fontFamily: 'Georgia,serif', fontSize: 14 }} />
+                  </div>
+                  <div style={{ display: 'flex', gap: 2 }}>
+                    {['simple','complex','overhead'].map(s => (
+                      <button key={s} onClick={() => setQueueTeam(p => p.map((x,j)=>j===i?{...x,stream:s}:x))}
+                        style={{ fontSize: 9, padding: '2px 5px', borderRadius: 3, border: `1px solid ${m.stream===s?streamColors[s]:streamColors[s]+'33'}`, background: m.stream===s?streamColors[s]:'transparent', color: m.stream===s?'#fff':streamColors[s]+'99', cursor: 'pointer', fontFamily: 'Georgia,serif' }}>
+                        {s==='overhead'?'Pool':s.charAt(0).toUpperCase()+s.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                  <button onClick={() => setQueueTeam(p => p.filter((_,j)=>j!==i))}
+                    style={{ ...btn, padding: '2px 6px', fontSize: 11, color: '#b91c1c', borderColor: '#fca5a5', marginLeft: 'auto' }}>×</button>
+                </div>
               );
             })}
-            {extraRoles.map(er => (
-              <span key={er.key} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 4, background: er.color + '18', color: er.color, border: `0.5px solid ${er.color}44` }}>
-                <Dot c={er.color} s={7} /> {er.label} <span style={{fontSize:10,opacity:0.7}}>(added in Plan)</span>
-              </span>
-            ))}
           </div>
-          <div style={{ fontSize: 11, color: '#aaa' }}>
-            {planMonthName ? <span>Holiday for <strong>{planMonthName}</strong> uses actual figures from Plan · future months use statutory accrual estimate · override any month in calendar below</span> : 'Holiday uses statutory accrual estimate · set month in Plan to use actual figures · override per month in calendar below'}
+          <div style={{ fontSize: 11, color: '#aaa', marginTop: 8 }}>
+            Holiday estimated by statutory accrual · Simple: <strong style={{color:'#1D9E75'}}>{queueTeam.filter(m=>m.stream==='simple').map(m=>m.name).join(', ')||'—'}</strong>
+            &nbsp;· Complex: <strong style={{color:'#7F77DD'}}>{queueTeam.filter(m=>m.stream==='complex').map(m=>m.name).join(', ')||'—'}</strong>
           </div>
         </div>
 
@@ -720,7 +604,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
           {!expandedMonths ? (
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {sortedMonths().map(m => {
-                const cap = getMonthProductionMins(m);
+                const cap = getMonthStreamMins('simple', m) + getMonthStreamMins('complex', m);
                 return (
                   <div key={m.label} style={{ background: '#f5f4f0', borderRadius: 4, padding: '5px 10px', fontSize: 11, textAlign: 'center', minWidth: 80 }}>
                     <div style={{ color: '#555', whiteSpace: 'nowrap', marginBottom: 2 }}>{m.label}</div>
@@ -732,7 +616,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 10 }}>
               {sortedMonths().map(m => {
-                const cap = getMonthProductionMins(m);
+                const cap = getMonthStreamMins('simple', m) + getMonthStreamMins('complex', m);
                 return (
                   <div key={m.label} style={{ background: '#fafaf8', border: '0.5px solid #eee', borderRadius: 6, padding: '0.75rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -746,24 +630,16 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
                         onChange={e => setCalendarMonths(p => p.map(x => x.label === m.label ? { ...x, workingDays: parseInt(e.target.value) || 0 } : x))} />
                     </div>
                     {(()=>{
-                      const wd = m.workingDays || workingDaysDefault;
+                      const wd = m.workingDays !== undefined ? parseInt(m.workingDays) : 21;
                       let totalAccrual = 0;
-                      activeKeys.forEach(k => {
-                        const rd = ROLE_DEFS.find(r => r.key === k);
-                        if (!rd) return;
-                        const rh = roleHours && roleHours[k];
-                        const stdDay = rh ? (parseFloat(rh.stdDay) || rd.stdDay) : rd.stdDay;
-                        const dpw = rh ? (parseFloat(rh.daysPerWeek) || rd.daysPerWeek || 5) : (rd.daysPerWeek || 5);
+                      queueTeam.forEach(tm => {
+                        const dpw = parseFloat(tm.daysPerWeek) || 5;
+                        const stdDay = parseFloat(tm.stdDay) || 7;
+                        const daysWorked = wd * dpw / 5;
                         const proRatedDays = 28 * (dpw / 5);
                         const workingDaysPerYear = 260 * dpw / 5;
-                        totalAccrual += ((proRatedDays * stdDay) / workingDaysPerYear) * wd;
-                      });
-                      extraRoles.forEach(er => {
-                        const dpw = parseFloat(er.daysPerWeek) || 5;
-                        const stdDay = parseFloat(er.stdDay) || 7;
-                        const proRatedDays = 28 * (dpw / 5);
-                        const workingDaysPerYear = 260 * dpw / 5;
-                        totalAccrual += ((proRatedDays * stdDay) / workingDaysPerYear) * wd;
+                        const accrualPerDay = (proRatedDays * stdDay) / workingDaysPerYear;
+                        totalAccrual += accrualPerDay * daysWorked;
                       });
                       return (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', background: '#f5f4f0', borderRadius: 4 }}>

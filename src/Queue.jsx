@@ -283,6 +283,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const saveTimer = useRef(null);
+  const initialLoadDone = useRef(false);
 
   const [simpleOrders, setSimpleOrders] = useState([]);
   const [complexOrders, setComplexOrders] = useState([]);
@@ -326,8 +327,9 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
       if (queue.calendarMonths) setCalendarMonths(queue.calendarMonths);
       if (queue.overtimePool !== undefined) setOvertimePool(queue.overtimePool);
       if (queue.complexThreshold !== undefined) setComplexThreshold(queue.complexThreshold);
+      initialLoadDone.current = true;
       setLoading(false);
-    }).catch(() => setLoading(false));
+    }).catch(() => { initialLoadDone.current = true; setLoading(false); });
   }, [authed]);
 
   const triggerSave = useRef(null);
@@ -345,7 +347,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   };
 
   useEffect(() => {
-    if (!authed || loading) return;
+    if (!authed || loading || !initialLoadDone.current) return;
     triggerSave.current();
   }, [simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexThreshold]);
 

@@ -436,7 +436,9 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
         const available = cap - usedMins;
         if (available >= orderMins) {
           usedMins += orderMins;
-          result.push({ ...order, projectedMonth: months[monthIdx].label });
+          // Store fraction of month used so lead time can be calculated precisely
+          const monthFrac = cap > 0 ? usedMins / cap : 1;
+          result.push({ ...order, projectedMonth: months[monthIdx].label, monthFrac, monthCap: cap });
           allocated = true;
           break;
         } else {
@@ -453,15 +455,18 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     if (!scheduled.length) return null;
     const last = scheduled[scheduled.length - 1];
     if (!last.projectedMonth || last.projectedMonth === 'No calendar set' || last.projectedMonth === 'Beyond calendar') return null;
-    // Parse "June 2026" style labels safely across all browsers including mobile Safari
     const parts = last.projectedMonth.split(' ');
     if (parts.length < 2) return null;
-    const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-    const monthIdx = months.indexOf(parts[0]);
+    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const monthIdx = monthNames.indexOf(parts[0]);
     const year = parseInt(parts[1]);
     if (monthIdx === -1 || isNaN(year)) return null;
-    const endMonth = new Date(year, monthIdx, 1); // first day of that month — order completes during this month
-    const weeks = Math.round((endMonth - new Date()) / (1000 * 60 * 60 * 24 * 7));
+    // Use fraction of month completed to get a precise date within the month
+    const frac = last.monthFrac || 0.5; // default to midpoint if not available
+    const daysInMonth = new Date(year, monthIdx + 1, 0).getDate();
+    const dayOfMonth = Math.round(frac * daysInMonth);
+    const completionDate = new Date(year, monthIdx, Math.max(1, dayOfMonth));
+    const weeks = Math.round((completionDate - new Date()) / (1000 * 60 * 60 * 24 * 7));
     return Math.max(0, weeks);
   }
 

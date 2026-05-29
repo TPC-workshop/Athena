@@ -372,11 +372,6 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
         : (parseFloat(er.holiday) || accrual);
       totalMins += Math.max(0, grossHrs - holidayHrs) * 60;
     }
-    // Queue-only extra team members
-    for (const m of extraTeam) {
-      const hpw = parseFloat(m.hrsPerWeek) || 0;
-      if (hpw > 0) totalMins += hpw * (wd / 5) * 60;
-    }
     const overheadMins = ((parseFloat(mgmtOverhead) || 0) + (parseFloat(wsOverhead) || 0)) * 60;
     return Math.max(0, totalMins - overheadMins);
   }
@@ -485,7 +480,6 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
       const holiday = getHolidayDeduction(key, month, wd);
       poolMins += Math.max(0, gross - holiday) * 60;
     }
-// extraTeam removed — use Plan team members instead
     // Fixed overhead budgets also split proportionally
     const fixedOverhead = ((parseFloat(mgmtOverhead) || 0) + (parseFloat(wsOverhead) || 0)) * 60;
     return (fixedOverhead - poolMins * frac) * frac;

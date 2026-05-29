@@ -693,21 +693,24 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
                       <span style={{ fontSize: 11, color: '#1D9E75', fontWeight: 'bold' }}>{(cap / 60).toFixed(1)}h prod</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-                      <label style={{ fontSize: 11, color: '#888', whiteSpace: 'nowrap' }}>Working weeks:</label>
+                      <label style={{ fontSize: 11, color: '#888', whiteSpace: 'nowrap' }}>Working days:</label>
                       <input type="number"
-                        value={m.workingWeeks !== undefined ? m.workingWeeks : (m.workingDays !== undefined ? (parseInt(m.workingDays)/5).toFixed(1) : 4.2)}
+                        value={m.workingDays !== undefined ? m.workingDays : 21}
+                        min="0" max="31" step="1"
+                        style={{ width: 52, padding: '3px 6px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', fontSize: 16 }}
+                        onChange={e => setCalendarMonths(p => p.map(x => x.label === m.label ? { ...x, workingDays: parseInt(e.target.value) || 0 } : x))} />
+                      <label style={{ fontSize: 11, color: '#888', whiteSpace: 'nowrap', marginLeft: 4 }}>Working weeks:</label>
+                      <input type="number"
+                        value={m.workingWeeks !== undefined ? m.workingWeeks : 4.2}
                         min="0" max="6" step="0.1"
-                        style={{ width: 64, padding: '3px 6px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', fontSize: 16 }}
-                        onChange={e => setCalendarMonths(p => p.map(x => x.label === m.label ? { ...x, workingWeeks: parseFloat(e.target.value) || 0, workingDays: Math.round((parseFloat(e.target.value)||0)*5) } : x))} />
-                      <span style={{ fontSize: 11, color: '#aaa' }}>
-                        = {Math.round((m.workingWeeks !== undefined ? parseFloat(m.workingWeeks) : (m.workingDays !== undefined ? parseInt(m.workingDays)/5 : 4.2)) * 5)} days
-                      </span>
+                        style={{ width: 52, padding: '3px 6px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', fontSize: 16 }}
+                        onChange={e => setCalendarMonths(p => p.map(x => x.label === m.label ? { ...x, workingWeeks: parseFloat(e.target.value) || 0 } : x))} />
                       <button
                         onClick={() => setCalendarMonths(p => p.map(x => {
                           if (x.label !== m.label) return x;
-                          const current = x.workingWeeks !== undefined ? parseFloat(x.workingWeeks) : (x.workingDays !== undefined ? parseInt(x.workingDays)/5 : 4.2);
-                          const newWw = Math.max(0, Math.round((current - 0.2) * 10) / 10);
-                          return { ...x, workingWeeks: newWw, workingDays: Math.round(newWw * 5) };
+                          const newDays = Math.max(0, (parseInt(x.workingDays) || 0) - 1);
+                          const newWw = Math.max(0, Math.round(((x.workingWeeks !== undefined ? parseFloat(x.workingWeeks) : 4.2) - 0.2) * 10) / 10);
+                          return { ...x, workingDays: newDays, workingWeeks: newWw };
                         }))}
                         style={{ padding: '4px 10px', border: '0.5px solid #ddd', borderRadius: 4, background: '#f5f4f0', fontFamily: 'Georgia,serif', fontSize: 13, cursor: 'pointer', color: '#555' }}>
                         − 1 day

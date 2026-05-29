@@ -275,7 +275,6 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   const [overtimePool, setOvertimePool] = useState(0);
   const [complexRatio, setComplexRatio] = useState(6);
   const [complexThreshold, setComplexThreshold] = useState(30);
-  const [extraTeam, setExtraTeam] = useState([]); // [{name, hrsPerWeek}]
   const [addingTo, setAddingTo] = useState(null);
   const [expandedMonths, setExpandedMonths] = useState(false);
 
@@ -310,7 +309,6 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
       if (queue.calendarMonths) setCalendarMonths(queue.calendarMonths);
       if (queue.overtimePool !== undefined) setOvertimePool(queue.overtimePool);
       if (queue.complexThreshold !== undefined) setComplexThreshold(queue.complexThreshold);
-      if (queue.extraTeam) setExtraTeam(queue.extraTeam);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [authed]);
@@ -322,7 +320,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     saveTimer.current = setTimeout(async () => {
       setSaving(true);
       // Save ONLY queue data — never touches Plan state
-      await apiSaveQueue({ simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexThreshold, extraTeam });
+      await apiSaveQueue({ simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexThreshold });
       setSaving(false);
       setSaveMsg('✓ Saved');
       setTimeout(() => setSaveMsg(''), 3000);
@@ -332,7 +330,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   useEffect(() => {
     if (!authed || loading) return;
     triggerSave.current();
-  }, [simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexThreshold, extraTeam]);
+  }, [simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexThreshold]);
 
   // ── Calendar ───────────────────────────────────────────────────────────────
 
@@ -487,10 +485,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
       const holiday = getHolidayDeduction(key, month, wd);
       poolMins += Math.max(0, gross - holiday) * 60;
     }
-    for (const m of extraTeam) {
-      const hpw = parseFloat(m.hrsPerWeek) || 0;
-      if (hpw > 0) poolMins += hpw * (wd / 5) * 60;
-    }
+// extraTeam removed — use Plan team members instead
     // Fixed overhead budgets also split proportionally
     const fixedOverhead = ((parseFloat(mgmtOverhead) || 0) + (parseFloat(wsOverhead) || 0)) * 60;
     return (fixedOverhead - poolMins * frac) * frac;
@@ -585,7 +580,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
 
   // ── Backup / restore ─────────────────────────────────────────────────────
   function exportBackup() {
-    const data = { simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexRatio, complexThreshold, extraTeam, exportedAt: new Date().toISOString() };
+    const data = { simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexRatio, complexThreshold, exportedAt: new Date().toISOString() };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -610,7 +605,6 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
         if (data.overtimePool !== undefined) setOvertimePool(data.overtimePool);
         if (data.complexRatio !== undefined) setComplexRatio(data.complexRatio);
         if (data.complexThreshold !== undefined) setComplexThreshold(data.complexThreshold);
-        if (data.extraTeam) setExtraTeam(data.extraTeam);
         alert('Queue restored successfully from backup.');
       } catch { alert('Could not read backup file — make sure it is a valid Athena queue backup.'); }
     };
@@ -773,28 +767,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
               <div style={{ fontSize: 10, color: '#aaa', marginTop: 3 }}>Currently: under {complexThreshold}h = simple · {complexThreshold}h+ = complex</div>
             </div>
           </div>
-          {/* Extra team members for queue capacity only */}
-          <div style={{ marginTop: 12, paddingTop: 12, borderTop: '0.5px solid #eee' }}>
-            <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>
-              Additional capacity <span style={{ color: '#bbb' }}>— queue only, does not affect monthly dispatch (e.g. Harry 7h/week)</span>
-            </div>
-            {extraTeam.map((m, i) => (
-              <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                <input placeholder="Name" value={m.name || ''} onChange={e => setExtraTeam(p => p.map((x, j) => j === i ? { ...x, name: e.target.value } : x))}
-                  style={{ flex: 1, minWidth: 120, padding: '4px 8px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', fontSize: 16 }} />
-                <input type="number" value={m.hrsPerWeek || ''} min="0" step="0.5" placeholder="hrs/wk"
-                  onChange={e => setExtraTeam(p => p.map((x, j) => j === i ? { ...x, hrsPerWeek: parseFloat(e.target.value) || 0 } : x))}
-                  style={{ width: 72, padding: '4px 8px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', fontSize: 16 }} />
-                <span style={{ fontSize: 11, color: '#888' }}>hrs/week</span>
-                <button onClick={() => setExtraTeam(p => p.filter((_, j) => j !== i))}
-                  style={{ padding: '4px 8px', border: '0.5px solid #fca5a5', borderRadius: 4, background: '#fff', color: '#b91c1c', cursor: 'pointer', fontFamily: 'Georgia,serif', fontSize: 12 }}>×</button>
-              </div>
-            ))}
-            <button onClick={() => setExtraTeam(p => [...p, { name: '', hrsPerWeek: 7 }])}
-              style={{ padding: '4px 12px', border: '0.5px solid #999', borderRadius: 4, background: '#fff', fontFamily: 'Georgia,serif', fontSize: 12, cursor: 'pointer' }}>
-              + Add person
-            </button>
-          </div>
+
         </div>
 
         {/* Simple stream */}

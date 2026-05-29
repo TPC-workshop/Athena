@@ -371,7 +371,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
         const label = generateMonthLabel(i);
         const existing = merged.find(x => x.label === label);
         if (!existing) {
-          merged.push({ label, workingDays: 21 });
+          merged.push({ label, workingDays: 21, workingWeeks: 4.2 });
         }
         // Never modify existing months — their workingDays must be preserved
       }
@@ -389,8 +389,10 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   }
 
     function getMonthStreamMins(stream, month) {
-    const wd = month.workingDays !== undefined ? parseInt(month.workingDays) : 21;
-    if (wd === 0) return 0;
+    // Use workingWeeks if set, otherwise fall back to workingDays/5
+    const ww = month.workingWeeks !== undefined ? parseFloat(month.workingWeeks) : (month.workingDays !== undefined ? parseInt(month.workingDays) / 5 : 4.2);
+    if (ww === 0) return 0;
+    const wd = ww * 5; // convert weeks to days for calculations
     let totalMins = 0;
     const teamInStream = queueTeam.filter(m => m.stream === stream);
     for (const m of teamInStream) {
@@ -461,11 +463,15 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     const monthIdx = monthNames.indexOf(parts[0]);
     const year = parseInt(parts[1]);
     if (monthIdx === -1 || isNaN(year)) return null;
-    // Use fraction of month completed to get a precise date within the month
-    const frac = last.monthFrac || 0.5; // default to midpoint if not available
-    const daysInMonth = new Date(year, monthIdx + 1, 0).getDate();
-    const dayOfMonth = Math.round(frac * daysInMonth);
-    const completionDate = new Date(year, monthIdx, Math.max(1, dayOfMonth));
+    // Find the calendar month to get its working weeks
+    const calMonth = sortedMonths().find(m => m.label === last.projectedMonth);
+    const monthWw = calMonth ? (calMonth.workingWeeks !== undefined ? parseFloat(calMonth.workingWeeks) : (calMonth.workingDays !== undefined ? parseInt(calMonth.workingDays)/5 : 4.2)) : 4.2;
+    // How many weeks into the month does the last order finish?
+    const frac = last.monthFrac || 0.5;
+    const weeksIntoMonth = frac * monthWw;
+    // Count weeks from start of projected month to completion point
+    const monthStart = new Date(year, monthIdx, 1);
+    const completionDate = new Date(monthStart.getTime() + weeksIntoMonth * 7 * 24 * 60 * 60 * 1000);
     const weeks = Math.round((completionDate - new Date()) / (1000 * 60 * 60 * 24 * 7));
     return Math.max(0, weeks);
   }
@@ -666,12 +672,12 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {sortedMonths().map(m => {
                 const cap = getMonthStreamMins('simple', m) + getMonthStreamMins('complex', m);
-                const wd = m.workingDays !== undefined ? parseInt(m.workingDays) : 21;
+                const ww = m.workingWeeks !== undefined ? parseFloat(m.workingWeeks) : (m.workingDays !== undefined ? parseInt(m.workingDays)/5 : 4.2);
                 return (
                   <div key={m.label} style={{ background: '#f5f4f0', borderRadius: 4, padding: '5px 10px', fontSize: 11, textAlign: 'center', minWidth: 80 }}>
                     <div style={{ color: '#555', whiteSpace: 'nowrap', marginBottom: 2 }}>{m.label}</div>
                     <div style={{ fontWeight: 'bold', color: '#1a1a1a' }}>{(cap / 60).toFixed(0)}h</div>
-                    <div style={{ fontSize: 10, color: '#aaa' }}>{wd}d · {(wd/5).toFixed(1)}w</div>
+                    <div style={{ fontSize: 10, color: '#aaa' }}>{ww.toFixed(1)}w</div>
                   </div>
                 );
               })}
@@ -687,19 +693,29 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
                       <span style={{ fontSize: 11, color: '#1D9E75', fontWeight: 'bold' }}>{(cap / 60).toFixed(1)}h prod</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-                      <label style={{ fontSize: 11, color: '#888', whiteSpace: 'nowrap' }}>Working days:</label>
-                      <input type="number" value={m.workingDays !== undefined ? m.workingDays : 21} min="0" max="31"
-                        style={{ width: 52, padding: '3px 6px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', fontSize: 16 }}
-                        onChange={e => setCalendarMonths(p => p.map(x => x.label === m.label ? { ...x, workingDays: parseInt(e.target.value) || 0 } : x))} />
-                      <span style={{ fontSize: 11, color: '#aaa' }}>= {((m.workingDays !== undefined ? m.workingDays : 21) / 5).toFixed(1)} weeks</span>
+                      <label style={{ fontSize: 11, color: '#888', whiteSpace: 'nowrap' }}>Working weeks:</label>
+                      <input type="number"
+                        value={m.workingWeeks !== undefined ? m.workingWeeks : (m.workingDays !== undefined ? (parseInt(m.workingDays)/5).toFixed(1) : 4.2)}
+                        min="0" max="6" step="0.1"
+                        style={{ width: 64, padding: '3px 6px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', fontSize: 16 }}
+                        onChange={e => setCalendarMonths(p => p.map(x => x.label === m.label ? { ...x, workingWeeks: parseFloat(e.target.value) || 0, workingDays: Math.round((parseFloat(e.target.value)||0)*5) } : x))} />
+                      <span style={{ fontSize: 11, color: '#aaa' }}>
+                        = {Math.round((m.workingWeeks !== undefined ? parseFloat(m.workingWeeks) : (m.workingDays !== undefined ? parseInt(m.workingDays)/5 : 4.2)) * 5)} days
+                      </span>
                       <button
-                        onClick={() => setCalendarMonths(p => p.map(x => x.label === m.label ? { ...x, workingDays: Math.max(0, (parseInt(x.workingDays) || 0) - 1) } : x))}
+                        onClick={() => setCalendarMonths(p => p.map(x => {
+                          if (x.label !== m.label) return x;
+                          const current = x.workingWeeks !== undefined ? parseFloat(x.workingWeeks) : (x.workingDays !== undefined ? parseInt(x.workingDays)/5 : 4.2);
+                          const newWw = Math.max(0, Math.round((current - 0.2) * 10) / 10);
+                          return { ...x, workingWeeks: newWw, workingDays: Math.round(newWw * 5) };
+                        }))}
                         style={{ padding: '4px 10px', border: '0.5px solid #ddd', borderRadius: 4, background: '#f5f4f0', fontFamily: 'Georgia,serif', fontSize: 13, cursor: 'pointer', color: '#555' }}>
                         − 1 day
                       </button>
                     </div>
                     {(()=>{
-                      const wd = m.workingDays !== undefined ? parseInt(m.workingDays) : 21;
+                      const ww2 = m.workingWeeks !== undefined ? parseFloat(m.workingWeeks) : (m.workingDays !== undefined ? parseInt(m.workingDays)/5 : 4.2);
+                      const wd = ww2 * 5;
                       let totalAccrual = 0;
                       queueTeam.forEach(tm => {
                         const dpw = parseFloat(tm.daysPerWeek) || 5;

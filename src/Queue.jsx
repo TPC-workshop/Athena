@@ -77,6 +77,7 @@ function QueueLogin({ onAuth }) {
 // ── Add order form — lifted outside main component to prevent remount ────────
 const AddOrderForm = memo(function AddOrderForm({ stream, color, onAdd, onCancel, complexThreshold }) {
   const [name, setName] = useState('');
+  const [orderDate, setOrderDate] = useState('');
   const [unitType, setUnitType] = useState('painted');
   const [qtys, setQtys] = useState(Object.fromEntries(QTYS.map(([q]) => [q, 0])));
   const [bespoke, setBespoke] = useState([]);
@@ -149,7 +150,7 @@ const AddOrderForm = memo(function AddOrderForm({ stream, color, onAdd, onCancel
       </div>
 
       <div style={{ display: 'flex', gap: 8 }}>
-        <button onClick={() => onAdd({ name, unitType, qtys: { ...qtys }, bespoke: bespoke.filter(b => b.desc && parseInt(b.mins) > 0).map(b => ({...b, mins: parseInt(b.mins)||0})) })}
+        <button onClick={() => onAdd({ name, orderDate, unitType, qtys: { ...qtys }, bespoke: bespoke.filter(b => b.desc && parseInt(b.mins) > 0).map(b => ({...b, mins: parseInt(b.mins)||0})) })}
           style={{ padding: '10px 22px', border: 'none', borderRadius: 4, background: '#1a1a1a', color: '#fff', fontFamily: 'Georgia,serif', fontSize: 13, cursor: 'pointer' }}>
           Add to queue
         </button>
@@ -281,6 +282,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   const [activeKeys, setActiveKeys] = useState(propActiveKeys || ['manager', 'maker1', 'assistant']);
   const [extraRoles, setExtraRoles] = useState([]);
   const [roleStreams, setRoleStreams] = useState({manager:'complex',maker1:'simple',maker2:'simple',painter:'overhead',assistant:'simple'});
+  const [roleHours, setRoleHours] = useState({});
   const [planHoliday, setPlanHoliday] = useState({});
   const [planMonthName, setPlanMonthName] = useState('');
   const [workingDaysDefault, setWorkingDaysDefault] = useState(propWorkingDays || 21);
@@ -299,6 +301,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
       if (plan.mgmtOverheadBudget !== undefined) setMgmtOverhead(plan.mgmtOverheadBudget);
       if (plan.wsOverheadBudget !== undefined) setWsOverhead(plan.wsOverheadBudget);
       if (plan.roleStreams) setRoleStreams(plan.roleStreams);
+      if (plan.roleHours) setRoleHours(plan.roleHours);
       // Queue data — orders and settings only
       if (queue.simpleOrders) setSimpleOrders(queue.simpleOrders);
       if (queue.complexOrders) setComplexOrders(queue.complexOrders);
@@ -411,60 +414,98 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   // Overhead pool members add to total but are distributed proportionally.
   // No ratio — streams don't share capacity.
 
-  function getMonthSimpleMins(month) {
+  // Helper: get hours for a standard role using roleHours overrides from Plan
+  function getRoleHrs(key, wd) {
+    const rd = ROLE_DEFS.find(r => r.key === key);
+    if (!rd) return 0;
+    const rh = roleHours && roleHours[key];
+    const stdDay = rh ? (parseFloat(rh.stdDay) || rd.stdDay) : rd.stdDay;
+    const dpw = rh ? (parseFloat(rh.daysPerWeek) || rd.daysPerWeek || 5) : (rd.daysPerWeek || 5);
+    return stdDay * (wd * dpw / 5);
+  }
+
+  // Helper: get accrual for a role using actual h/day and d/wk
+  function getRoleAccrual(key, wd) {
+    const rd = ROLE_DEFS.find(r => r.key === key);
+    if (!rd) return 0;
+    const rh = roleHours && roleHours[key];
+    const stdDay = rh ? (parseFloat(rh.stdDay) || rd.stdDay) : rd.stdDay;
+    const dpw = rh ? (parseFloat(rh.daysPerWeek) || rd.daysPerWeek || 5) : (rd.daysPerWeek || 5);
+    const workingDaysPerYear = 260 * dpw / 5;
+    const accrualPerDay = (28 * stdDay) / workingDaysPerYear;
+    return accrualPerDay * wd;
+  }
+
+  // Helper: get holiday deduction for a role in a given month
+  function getHolidayDeduction(key, month, wd) {
+    // Priority: 1) calendar month override, 2) plan holiday if same month, 3) accrual
+    if (month.holiday && month.holiday[key] !== undefined) return parseFloat(month.holiday[key]);
+    if (isPlanMonth(month.label) && planHoliday[key] !== undefined) return parseFloat(planHoliday[key]);
+    return getRoleAccrual(key, wd);
+  }
+
+  // Calculate raw mins for a stream (before overhead deduction)
+  function streamRawMins(stream, month) {
     const wd = month.workingDays || workingDaysDefault;
-    let totalMins = 0;
-    // Simple stream roles
+    let mins = 0;
+    // Standard roles
     for (const key of activeKeys) {
-      const rd = ROLE_DEFS.find(r => r.key === key);
-      if (!rd) continue;
-      if ((roleStreams && roleStreams[key] !== 'simple')) continue;
-      const dpw = rd.daysPerWeek || 5;
-      const grossHrs = rd.stdDay * (wd * dpw / 5);
-      const accrual = getAccrualPerDay(rd) * wd;
-      const holidayHrs = (month.holiday && month.holiday[key] !== undefined) ? parseFloat(month.holiday[key]) : (isPlanMonth(month.label) && planHoliday[key] !== undefined ? parseFloat(planHoliday[key]) : accrual);
-      totalMins += Math.max(0, grossHrs - holidayHrs) * 60;
+      if ((roleStreams && roleStreams[key]) !== stream) continue;
+      const gross = getRoleHrs(key, wd);
+      const holiday = getHolidayDeduction(key, month, wd);
+      mins += Math.max(0, gross - holiday) * 60;
     }
+    // Extra roles (from Plan — Harry etc.)
     for (const er of extraRoles) {
-      if ((er.stream || 'complex') !== 'simple') continue;
+      if ((er.stream || 'complex') !== stream) continue;
       const dpw = parseFloat(er.daysPerWeek) || 5;
-      const grossHrs = (parseFloat(er.stdDay)||7) * (wd * dpw / 5);
-      totalMins += Math.max(0, grossHrs - (parseFloat(er.holiday)||0)) * 60;
+      const stdDay = parseFloat(er.stdDay) || 7;
+      const gross = stdDay * (wd * dpw / 5);
+      const workingDaysPerYear = 260 * dpw / 5;
+      const accrualPerDay = (28 * stdDay) / workingDaysPerYear;
+      const holiday = (month.holiday && month.holiday[er.key] !== undefined)
+        ? parseFloat(month.holiday[er.key])
+        : accrualPerDay * wd;
+      mins += Math.max(0, gross - holiday) * 60;
     }
-    // Overhead pool adds proportionally — split by raw hours ratio
+    return mins;
+  }
+
+  // Overhead pool — proportional split based on actual stream raw hours
+  function getOverheadForStream(stream, month) {
+    const wd = month.workingDays || workingDaysDefault;
+    const simpleMins = streamRawMins('simple', month);
+    const complexMins = streamRawMins('complex', month);
+    const total = simpleMins + complexMins;
+    if (total === 0) return 0;
+    const frac = stream === 'simple' ? simpleMins / total : complexMins / total;
+    // Overhead pool members split proportionally
+    let poolMins = 0;
+    for (const key of activeKeys) {
+      if ((roleStreams && roleStreams[key]) !== 'overhead') continue;
+      const gross = getRoleHrs(key, wd);
+      const holiday = getHolidayDeduction(key, month, wd);
+      poolMins += Math.max(0, gross - holiday) * 60;
+    }
     for (const m of extraTeam) {
       const hpw = parseFloat(m.hrsPerWeek) || 0;
-      if (hpw > 0) totalMins += (hpw * (wd / 5) * 60) * 0.5; // split 50/50 for queue purposes
+      if (hpw > 0) poolMins += hpw * (wd / 5) * 60;
     }
-    const overheadMins = ((parseFloat(mgmtOverhead) || 0) + (parseFloat(wsOverhead) || 0)) * 60 * 0.5;
-    return Math.max(0, totalMins - overheadMins);
+    // Fixed overhead budgets also split proportionally
+    const fixedOverhead = ((parseFloat(mgmtOverhead) || 0) + (parseFloat(wsOverhead) || 0)) * 60;
+    return (fixedOverhead - poolMins * frac) * frac;
+  }
+
+  function getMonthSimpleMins(month) {
+    const raw = streamRawMins('simple', month);
+    const overhead = getOverheadForStream('simple', month);
+    return Math.max(0, raw - overhead);
   }
 
   function getMonthComplexMins(month) {
-    const wd = month.workingDays || workingDaysDefault;
-    let totalMins = 0;
-    for (const key of activeKeys) {
-      const rd = ROLE_DEFS.find(r => r.key === key);
-      if (!rd) continue;
-      if ((roleStreams && roleStreams[key] !== 'complex')) continue;
-      const dpw = rd.daysPerWeek || 5;
-      const grossHrs = rd.stdDay * (wd * dpw / 5);
-      const accrual = getAccrualPerDay(rd) * wd;
-      const holidayHrs = (month.holiday && month.holiday[key] !== undefined) ? parseFloat(month.holiday[key]) : (isPlanMonth(month.label) && planHoliday[key] !== undefined ? parseFloat(planHoliday[key]) : accrual);
-      totalMins += Math.max(0, grossHrs - holidayHrs) * 60;
-    }
-    for (const er of extraRoles) {
-      if ((er.stream || 'complex') !== 'complex') continue;
-      const dpw = parseFloat(er.daysPerWeek) || 5;
-      const grossHrs = (parseFloat(er.stdDay)||7) * (wd * dpw / 5);
-      totalMins += Math.max(0, grossHrs - (parseFloat(er.holiday)||0)) * 60;
-    }
-    for (const m of extraTeam) {
-      const hpw = parseFloat(m.hrsPerWeek) || 0;
-      if (hpw > 0) totalMins += (hpw * (wd / 5) * 60) * 0.5;
-    }
-    const overheadMins = ((parseFloat(mgmtOverhead) || 0) + (parseFloat(wsOverhead) || 0)) * 60 * 0.5;
-    return Math.max(0, totalMins - overheadMins);
+    const raw = streamRawMins('complex', month);
+    const overhead = getOverheadForStream('complex', month);
+    return Math.max(0, raw - overhead);
   }
 
   function calcStream(orders, getCapFn) {
@@ -610,16 +651,16 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
         </div>
 
         {/* Lead time summary cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: '1rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: '1rem' }}>
           {[
-            ['Simple lead time', simpleLead !== null ? `${simpleLead}w` : '—', '#1D9E75', `${simpleOrders.length} order${simpleOrders.length !== 1 ? 's' : ''} in queue`],
-            ['Complex lead time', complexLead !== null ? `${complexLead}w` : '—', '#7F77DD', `${complexOrders.length} order${complexOrders.length !== 1 ? 's' : ''} in queue`],
-            ['Finance overtime', financeOrders.length ? `${financeOrders.length} order${financeOrders.length !== 1 ? 's' : ''}` : '—', '#BA7517', `${(financeTotal / 60).toFixed(1)}h total`],
+            ['Simple', simpleLead !== null ? `${simpleLead}w` : '—', '#1D9E75', `${simpleOrders.length} order${simpleOrders.length !== 1 ? 's' : ''}`],
+            ['Complex', complexLead !== null ? `${complexLead}w` : '—', '#7F77DD', `${complexOrders.length} order${complexOrders.length !== 1 ? 's' : ''}`],
+            ['Finance', financeOrders.length ? `${financeOrders.length}` : '—', '#BA7517', `${(financeTotal / 60).toFixed(1)}h`],
           ].map(([l, v, c, sub]) => (
-            <div key={l} style={{ background: '#fff', border: `0.5px solid ${c}44`, borderRadius: 8, padding: '0.85rem 1rem', borderTop: `3px solid ${c}` }}>
-              <div style={{ fontSize: 10, color: '#888', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>{l}</div>
-              <div style={{ fontSize: 26, fontWeight: 'bold', color: c }}>{v}</div>
-              <div style={{ fontSize: 11, color: '#aaa', marginTop: 2 }}>{sub}</div>
+            <div key={l} style={{ background: '#fff', border: `0.5px solid ${c}44`, borderRadius: 8, padding: '0.75rem', borderTop: `3px solid ${c}`, minWidth: 0 }}>
+              <div style={{ fontSize: 9, color: '#888', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l}</div>
+              <div style={{ fontSize: 22, fontWeight: 'bold', color: c, lineHeight: 1 }}>{v}</div>
+              <div style={{ fontSize: 10, color: '#aaa', marginTop: 2 }}>{sub}</div>
             </div>
           ))}
         </div>

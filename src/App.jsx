@@ -24,20 +24,21 @@ async function apiSave(data) {
 }
 
 // Ad hoc task row — checkbox, goes grey when done
-const AdHocRow = memo(function AdHocRow({ t, src, activeRoles, onSet, budgets, assignedMins, onDelete }) {
+const AdHocRow = memo(function AdHocRow({ t, src, activeRoles, onSet, budgets, assignedMins, onDelete, roleLookup }) {
   const isDone = t.done, isAssigned = !!t.assignedRole;
-  const sc = rColor(t.sugRole), ac = rColor(t.assignedRole);
+  const rl = roleLookup || {};
+  const sc = rl.color?.(t.sugRole) || rColor(t.sugRole), ac = rl.color?.(t.assignedRole) || rColor(t.assignedRole);
   return (
     <div style={{display:'flex',alignItems:'center',gap:6,padding:'7px 0',borderBottom:'0.4px solid #f0f0f0',opacity:isDone?0.4:1,flexWrap:'wrap'}}>
       <input type="checkbox" checked={!!isDone} onChange={()=>onSet(src,t.id,{done:!isDone,assignedRole:isDone?t.assignedRole:null})}
         style={{width:18,height:18,cursor:'pointer',flexShrink:0}}/>
       <span style={{flex:1,fontSize:13,textDecoration:isDone?'line-through':'none',minWidth:100}}>{t.n}</span>
       <span style={{fontSize:11,color:'#bbb',minWidth:34,textAlign:'right'}}>{t.m}m</span>
-      {!isAssigned&&!isDone&&<span style={{fontSize:11,padding:'2px 6px',borderRadius:4,background:sc+'18',color:sc,border:`0.5px solid ${sc}44`,whiteSpace:'nowrap'}}>{rLabel(t.sugRole)}</span>}
+      {!isAssigned&&!isDone&&<span style={{fontSize:11,padding:'2px 6px',borderRadius:4,background:sc+'18',color:sc,border:`0.5px solid ${sc}44`,whiteSpace:'nowrap'}}>{rl.label?.(t.sugRole)||rLabel(t.sugRole)}</span>}
       {!isDone&&(isAssigned ? (
         <button onClick={()=>onSet(src,t.id,{assignedRole:null})}
           style={{fontSize:11,padding:'3px 10px',border:`1.5px solid ${ac}`,borderRadius:4,background:ac,color:'#fff',cursor:'pointer',fontFamily:'Georgia,serif',whiteSpace:'nowrap'}}>
-          {rLabel(t.assignedRole)} ✓
+          {rl.label?.(t.assignedRole) || rLabel(t.assignedRole)} ✓
         </button>
       ) : (
         <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
@@ -46,7 +47,7 @@ const AdHocRow = memo(function AdHocRow({ t, src, activeRoles, onSet, budgets, a
             return (
               <button key={rd.key} onClick={()=>onSet(src,t.id,{assignedRole:rd.key})}
                 style={{fontSize:11,padding:'3px 9px',borderRadius:4,border:atCap?'1.5px solid #dc2626':'0.5px solid '+rd.color+'66',background:atCap?'#fef2f2':rd.key===t.sugRole?rd.color+'22':'transparent',color:atCap?'#b91c1c':rd.color,cursor:'pointer',fontFamily:'Georgia,serif',whiteSpace:'nowrap',fontWeight:atCap?'bold':'normal'}}>
-                {rLabel(rd.key)}{atCap?' ⚠':''}
+                {rd.label}{atCap?' ⚠':''}
               </button>
             );
           })}
@@ -58,10 +59,11 @@ const AdHocRow = memo(function AdHocRow({ t, src, activeRoles, onSet, budgets, a
 });
 
 // Count-based task row — number input for monthly tally, role assignment
-const CountTaskRow = memo(function CountTaskRow({ t, src, activeRoles, onSet, budgets, assignedMins }) {
+const CountTaskRow = memo(function CountTaskRow({ t, src, activeRoles, onSet, budgets, assignedMins, roleLookup }) {
   const isAssigned = !!t.assignedRole;
   const count = t.count || 0;
-  const ac = rColor(t.assignedRole), sc = rColor(t.sugRole);
+  const rl = roleLookup || {};
+  const ac = rl.color?.(t.assignedRole) || rColor(t.assignedRole), sc = rl.color?.(t.sugRole) || rColor(t.sugRole);
   return (
     <div style={{display:'flex',alignItems:'center',gap:6,padding:'7px 0',borderBottom:'0.4px solid #f0f0f0',flexWrap:'wrap'}}>
       <span style={{flex:1,fontSize:13,minWidth:120}}>{t.n}</span>
@@ -79,11 +81,11 @@ const CountTaskRow = memo(function CountTaskRow({ t, src, activeRoles, onSet, bu
           onChange={e=>onSet(src,t.id,{count:Math.max(0,parseInt(e.target.value)||0)})}/>
         {count>0&&<span style={{fontSize:10,color:'#aaa'}}>{(count*(t.m||0)/60).toFixed(1)}h</span>}
       </div>
-      {!isAssigned&&<span style={{fontSize:11,padding:'2px 6px',borderRadius:4,background:sc+'18',color:sc,border:`0.5px solid ${sc}44`,whiteSpace:'nowrap'}}>{rLabel(t.sugRole)}</span>}
+      {!isAssigned&&<span style={{fontSize:11,padding:'2px 6px',borderRadius:4,background:sc+'18',color:sc,border:`0.5px solid ${sc}44`,whiteSpace:'nowrap'}}>{rl.label?.(t.sugRole)||rLabel(t.sugRole)}</span>}
       {isAssigned ? (
         <button onClick={()=>onSet(src,t.id,{assignedRole:null})}
           style={{fontSize:11,padding:'3px 10px',border:`1.5px solid ${ac}`,borderRadius:4,background:ac,color:'#fff',cursor:'pointer',fontFamily:'Georgia,serif',whiteSpace:'nowrap'}}>
-          {rLabel(t.assignedRole)} ✓
+          {rl.label?.(t.assignedRole)||rLabel(t.assignedRole)} ✓
         </button>
       ) : (
         <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
@@ -92,7 +94,7 @@ const CountTaskRow = memo(function CountTaskRow({ t, src, activeRoles, onSet, bu
             return (
               <button key={rd.key} onClick={()=>{if(t.needsTime){alert('Enter time first.');return;}onSet(src,t.id,{assignedRole:rd.key});}}
                 style={{fontSize:11,padding:'3px 9px',borderRadius:4,border:atCap?'1.5px solid #dc2626':'0.5px solid '+rd.color+'66',background:atCap?'#fef2f2':rd.key===t.sugRole?rd.color+'22':'transparent',color:atCap?'#b91c1c':rd.color,cursor:'pointer',fontFamily:'Georgia,serif',whiteSpace:'nowrap',fontWeight:atCap?'bold':'normal'}}>
-                {rLabel(rd.key)}{atCap?' ⚠':''}
+                {rd.label}{atCap?' ⚠':''}
               </button>
             );
           })}
@@ -103,7 +105,7 @@ const CountTaskRow = memo(function CountTaskRow({ t, src, activeRoles, onSet, bu
 });
 
 // Count-based collapsible section
-const CountSection = memo(function CountSection({ title, color, tasks, src, activeRoles, onSet, budgets, assignedMins, children }) {
+const CountSection = memo(function CountSection({ title, color, tasks, src, activeRoles, onSet, budgets, assignedMins, roleLookup, children }) {
   const [open, setOpen] = useState(true);
   return (
     <div style={{background:'#fff',border:'0.5px solid #ddd',borderRadius:8,marginBottom:'1rem',borderLeft:`3px solid ${color||'#888'}`,overflow:'hidden'}}>
@@ -115,7 +117,7 @@ const CountSection = memo(function CountSection({ title, color, tasks, src, acti
         <span style={{fontSize:11,color:'#888'}}>{open?'▲':'▼'}</span>
       </div>
       {open&&<div style={{padding:'0 1rem 0.75rem'}}>
-        {tasks.map(t=><CountTaskRow key={t.id} t={t} src={src} activeRoles={activeRoles} onSet={onSet} budgets={budgets} assignedMins={assignedMins}/>)}
+        {tasks.map(t=><CountTaskRow key={t.id} t={t} src={src} activeRoles={activeRoles} onSet={onSet} budgets={budgets} assignedMins={assignedMins} roleLookup={roleLookup}/>)}
         {children}
       </div>}
     </div>
@@ -123,20 +125,21 @@ const CountSection = memo(function CountSection({ title, color, tasks, src, acti
 });
 
 // Client task row — checkbox based
-const TaskRow = memo(function TaskRow({ t, src, activeRoles, onSet, budgets, assignedMins }) {
+const TaskRow = memo(function TaskRow({ t, src, activeRoles, onSet, budgets, assignedMins, roleLookup }) {
   const isDone=t.done, isAssigned=!!t.assignedRole;
-  const sc=rColor(t.sugRole), ac=rColor(t.assignedRole);
+  const rl = roleLookup || {};
+  const sc=rl.color?.(t.sugRole)||rColor(t.sugRole), ac=rl.color?.(t.assignedRole)||rColor(t.assignedRole);
   return (
     <div style={{display:'flex',alignItems:'center',gap:6,padding:'7px 0',borderBottom:'0.4px solid #f0f0f0',opacity:isDone?0.4:1,flexWrap:'wrap'}}>
       <input type="checkbox" checked={!!isDone} onChange={()=>onSet(src,t.id,{done:!isDone,assignedRole:isDone?t.assignedRole:null})}
         style={{width:18,height:18,cursor:'pointer',flexShrink:0}}/>
       <span style={{flex:1,fontSize:13,textDecoration:isDone?'line-through':'none',minWidth:100}}>{t.n}</span>
       <span style={{fontSize:11,color:'#bbb',minWidth:34,textAlign:'right'}}>{t.m}m</span>
-      {!isAssigned&&!isDone&&<span style={{fontSize:11,padding:'2px 6px',borderRadius:4,background:sc+'18',color:sc,border:`0.5px solid ${sc}44`,whiteSpace:'nowrap'}}>{rLabel(t.sugRole)}</span>}
+      {!isAssigned&&!isDone&&<span style={{fontSize:11,padding:'2px 6px',borderRadius:4,background:sc+'18',color:sc,border:`0.5px solid ${sc}44`,whiteSpace:'nowrap'}}>{rl.label?.(t.sugRole)||rLabel(t.sugRole)}</span>}
       {!isDone&&(isAssigned ? (
         <button onClick={()=>onSet(src,t.id,{assignedRole:null})}
           style={{fontSize:11,padding:'3px 10px',border:`1.5px solid ${ac}`,borderRadius:4,background:ac,color:'#fff',cursor:'pointer',fontFamily:'Georgia,serif',whiteSpace:'nowrap'}}>
-          {rLabel(t.assignedRole)} ✓
+          {rl.label?.(t.assignedRole)||rLabel(t.assignedRole)} ✓
         </button>
       ) : (
         <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
@@ -145,7 +148,7 @@ const TaskRow = memo(function TaskRow({ t, src, activeRoles, onSet, budgets, ass
             return (
               <button key={rd.key} onClick={()=>onSet(src,t.id,{assignedRole:rd.key})}
                 style={{fontSize:11,padding:'3px 9px',borderRadius:4,border:atCap?'1.5px solid #dc2626':'0.5px solid '+rd.color+'66',background:atCap?'#fef2f2':rd.key===t.sugRole?rd.color+'22':'transparent',color:atCap?'#b91c1c':rd.color,cursor:'pointer',fontFamily:'Georgia,serif',whiteSpace:'nowrap',fontWeight:atCap?'bold':'normal'}}>
-                {rLabel(rd.key)}{atCap?' ⚠':''}
+                {rd.label}{atCap?' ⚠':''}
               </button>
             );
           })}
@@ -156,7 +159,7 @@ const TaskRow = memo(function TaskRow({ t, src, activeRoles, onSet, budgets, ass
 });
 
 // Client order collapsible section — auto-minimises when 100% done
-const ClientSection = memo(function ClientSection({ title, color, tasks, src, activeRoles, onSet, showDone, budgets, assignedMins, defaultOpen, children }) {
+const ClientSection = memo(function ClientSection({ title, color, tasks, src, activeRoles, onSet, showDone, budgets, assignedMins, defaultOpen, roleLookup, children }) {
   const [open, setOpen] = useState(defaultOpen !== false);
   const visible = tasks.filter(t=>showDone||!t.done);
   return (
@@ -169,7 +172,7 @@ const ClientSection = memo(function ClientSection({ title, color, tasks, src, ac
         <span style={{fontSize:11,color:'#888'}}>{open?'▲':'▼'}</span>
       </div>
       {open&&<div style={{padding:'0 1rem 0.75rem'}}>
-        {visible.map(t=><TaskRow key={t.id} t={t} src={src} activeRoles={activeRoles} onSet={onSet} budgets={budgets} assignedMins={assignedMins}/>)}
+        {visible.map(t=><TaskRow key={t.id} t={t} src={src} activeRoles={activeRoles} onSet={onSet} budgets={budgets} assignedMins={assignedMins} roleLookup={roleLookup}/>)}
         {children}
       </div>}
     </div>
@@ -525,6 +528,11 @@ export default function App() {
 
   const budgets = Object.fromEntries(activeRoles.map(rd=>([rd.key,(parseFloat(dayHrs[rd.key])||0)*60])));
   const assignedMins = Object.fromEntries(activeRoles.map(rd=>([rd.key,getAssignedMins(rd.key)])));
+  // Role lookup for extra roles — passes correct label/color to task row components
+  const roleLookup = {
+    label: k => { const er=extraRoles.find(r=>r.key===k); return er?er.label:rLabel(k); },
+    color: k => { const er=extraRoles.find(r=>r.key===k); return er?er.color:rColor(k); },
+  };
 
   const C={fontFamily:'Georgia,serif',fontSize:13,background:'#f5f4f0',minHeight:'100vh',color:'#1a1a1a'};
   const card={background:'#fff',border:'0.5px solid #ddd',borderRadius:8,padding:'1rem 1.25rem',marginBottom:'1rem'};
@@ -822,7 +830,7 @@ export default function App() {
           </div>
         </div>
 
-        <CountSection title="Management tasks" color="#7F77DD" tasks={mgmtTasks} src="mgmt" activeRoles={activeRoles} onSet={setTaskProp} budgets={budgets} assignedMins={assignedMins}>
+        <CountSection title="Management tasks" color="#7F77DD" tasks={mgmtTasks} src="mgmt" activeRoles={activeRoles} onSet={setTaskProp} budgets={budgets} assignedMins={assignedMins} roleLookup={roleLookup}>
           <div style={{marginTop:10,paddingTop:10,borderTop:'0.5px solid #eee'}}>
             <div style={{fontSize:11,color:'#888',marginBottom:6}}>Management ad hoc <span style={{color:'#bbb'}}>— deducted from management overhead</span></div>
             <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginBottom:6}}>
@@ -833,13 +841,13 @@ export default function App() {
                 style={{...btn,padding:'5px 14px',fontSize:12}}>Add</button>
             </div>
             {mgmtExtraTasks.filter(t=>showDone||!t.done).map(t=>(
-              <AdHocRow key={t.id} t={t} src="mgmtExtra" activeRoles={activeRoles} onSet={setTaskProp} budgets={budgets} assignedMins={assignedMins}
+              <AdHocRow key={t.id} t={t} src="mgmtExtra" activeRoles={activeRoles} onSet={setTaskProp} budgets={budgets} assignedMins={assignedMins} roleLookup={roleLookup}
                 onDelete={()=>setMgmtExtraTasks(p=>p.filter(x=>x.id!==t.id))}/>
             ))}
           </div>
         </CountSection>
 
-        <CountSection title="Workshop & maintenance tasks" color="#888" tasks={wsTasks} src="ws" activeRoles={activeRoles} onSet={setTaskProp} budgets={budgets} assignedMins={assignedMins}>
+        <CountSection title="Workshop & maintenance tasks" color="#888" tasks={wsTasks} src="ws" activeRoles={activeRoles} onSet={setTaskProp} budgets={budgets} assignedMins={assignedMins} roleLookup={roleLookup}>
           <div style={{marginTop:10,paddingTop:10,borderTop:'0.5px solid #eee'}}>
             <div style={{fontSize:11,color:'#888',marginBottom:6}}>Workshop ad hoc <span style={{color:'#bbb'}}>— deducted from workshop overhead when ticked · incl. MDF priming</span></div>
             <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginBottom:6}}>
@@ -850,7 +858,7 @@ export default function App() {
                 style={{...btn,padding:'5px 14px',fontSize:12}}>Add</button>
             </div>
             {extraTasks.filter(t=>showDone||!t.done).map(t=>(
-              <AdHocRow key={t.id} t={t} src="extra" activeRoles={activeRoles} onSet={setTaskProp} budgets={budgets} assignedMins={assignedMins}
+              <AdHocRow key={t.id} t={t} src="extra" activeRoles={activeRoles} onSet={setTaskProp} budgets={budgets} assignedMins={assignedMins} roleLookup={roleLookup}
                 onDelete={()=>setExtraTasks(p=>p.filter(x=>x.id!==t.id))}/>
             ))}
           </div>
@@ -865,7 +873,7 @@ export default function App() {
           const isComplete=pct>=100&&totalTasks>0;
           const status=getOrderStatus(cl);
           return(
-            <ClientSection key={cl.id} title={cl.name||'Unnamed'} color={cl.col} tasks={tasks} src={cl.id} activeRoles={activeRoles} onSet={setTaskProp} showDone={showDone} budgets={budgets} assignedMins={assignedMins} defaultOpen={!isComplete}>
+            <ClientSection key={cl.id} title={cl.name||'Unnamed'} color={cl.col} tasks={tasks} src={cl.id} activeRoles={activeRoles} onSet={setTaskProp} showDone={showDone} budgets={budgets} assignedMins={assignedMins} defaultOpen={!isComplete} roleLookup={roleLookup}>
               <div style={{fontSize:11,color:'#aaa',marginTop:6,display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
                 <span>{asgn} assigned · {doneTasks}/{totalTasks} done{cl.date?` · due ${cl.date}`:''}</span>
                 {status&&(

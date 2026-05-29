@@ -95,10 +95,14 @@ const AddOrderForm = memo(function AddOrderForm({ stream, color, onAdd, onCancel
   return (
     <div style={{ background: '#fafaf8', border: `0.5px solid ${color}44`, borderRadius: 6, padding: '0.85rem 1rem', marginTop: 8 }}>
       <div style={{ fontSize: 12, fontWeight: 'bold', color, marginBottom: 10 }}>New {stream} order</div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 10 }}>
         <div>
           <label style={lbl}>Client name</label>
           <input value={name} onChange={e => setName(e.target.value)} style={inp} placeholder="Client name" />
+        </div>
+        <div>
+          <label style={lbl}>Order date</label>
+          <input type="date" value={orderDate} onChange={e => setOrderDate(e.target.value)} style={inp} />
         </div>
         <div>
           <label style={lbl}>Unit type</label>

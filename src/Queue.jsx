@@ -207,6 +207,15 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
         <button onClick={onRemove}
           style={{ ...btn, padding: '4px 8px', fontSize: 11, color: '#b91c1c', borderColor: '#fca5a5' }}>×</button>
       </div>
+      {order.orderDate && (()=>{
+        const ordered = new Date(order.orderDate);
+        const elapsed = Math.round((new Date() - ordered) / (1000*60*60*24));
+        return (
+          <div style={{ fontSize: 11, color: elapsed > 60 ? '#b91c1c' : '#aaa', marginTop: 5, paddingLeft: 4, fontWeight: elapsed > 60 ? 'bold' : 'normal' }}>
+            Ordered {ordered.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})} · {elapsed} day{elapsed!==1?'s':''} ago{elapsed>60?' ⚠':''}
+          </div>
+        );
+      })()}
     </div>
   );
 });

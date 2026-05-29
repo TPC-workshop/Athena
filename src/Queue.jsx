@@ -571,20 +571,6 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
           </div>
         </div>
 
-        {/* TEMP DEBUG */}
-        {(()=>{
-          const juneMonth = sortedMonths().find(m => m.label.includes('June'));
-          if (!juneMonth) return <div style={{background:'#fef2f2',padding:'8px',marginBottom:'8px',fontSize:11,fontFamily:'monospace'}}>No June found</div>;
-          const sc = getMonthStreamMins('simple', juneMonth);
-          const cc = getMonthStreamMins('complex', juneMonth);
-          const team = queueTeam.map(m=>`${m.name}(${m.stream},${m.stdDay}h,${m.daysPerWeek}d)`).join(' | ');
-          return <div style={{background:'#fffbeb',border:'0.5px solid #fde68a',borderRadius:6,padding:'8px',marginBottom:'8px',fontSize:11,fontFamily:'monospace'}}>
-            June: simple={((sc)/60).toFixed(1)}h complex={((cc)/60).toFixed(1)}h wd={juneMonth.workingDays}<br/>
-            Team: {team}<br/>
-            Overhead: mgmt={mgmtOverhead} ws={wsOverhead}
-          </div>;
-        })()}
-
         {/* Lead time summary cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: '1rem' }}>
           {[

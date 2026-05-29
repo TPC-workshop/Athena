@@ -559,6 +559,14 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   const scheduledComplex = calcStream(complexOrders, getMonthComplexMins);
   const simpleLead = calcLeadTimeWeeks(scheduledSimple);
   const complexLead = calcLeadTimeWeeks(scheduledComplex);
+  // Debug: calculate first month capacity for display
+  const debugMonth = sortedMonths()[0];
+  const debugSimpleRaw = debugMonth ? streamRawMins('simple', debugMonth) : 0;
+  const debugComplexRaw = debugMonth ? streamRawMins('complex', debugMonth) : 0;
+  const debugSimpleOverhead = debugMonth ? getOverheadForStream('simple', debugMonth) : 0;
+  const debugComplexOverhead = debugMonth ? getOverheadForStream('complex', debugMonth) : 0;
+  const debugSimpleNet = debugSimpleRaw - debugSimpleOverhead;
+  const debugComplexNet = debugComplexRaw - debugComplexOverhead;
   const financeTotal = financeOrders.reduce((a, o) => a + calcOrderMins(o), 0);
   const overtimeMins = (parseFloat(overtimePool) || 0) * 60;
 
@@ -657,6 +665,16 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
             </label>
           </div>
         </div>
+
+        {/* DEBUG — remove after testing */}
+        {debugMonth && <div style={{background:'#fffbeb',border:'0.5px solid #fde68a',borderRadius:6,padding:'0.75rem',marginBottom:'1rem',fontSize:11,fontFamily:'monospace'}}>
+          <strong>Debug — {debugMonth.label} ({debugMonth.workingDays||workingDaysDefault} days)</strong><br/>
+          Simple raw: {(debugSimpleRaw/60).toFixed(1)}h · overhead: {(debugSimpleOverhead/60).toFixed(1)}h · net: {(debugSimpleNet/60).toFixed(1)}h<br/>
+          Complex raw: {(debugComplexRaw/60).toFixed(1)}h · overhead: {(debugComplexOverhead/60).toFixed(1)}h · net: {(debugComplexNet/60).toFixed(1)}h<br/>
+          Active keys: {activeKeys.join(', ')}<br/>
+          Extra roles: {extraRoles.map(er=>er.label+'('+er.stream+','+er.daysPerWeek+'d)').join(', ')||'none'}<br/>
+          Role streams: {JSON.stringify(roleStreams)}
+        </div>}
 
         {/* Lead time summary cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: '1rem' }}>

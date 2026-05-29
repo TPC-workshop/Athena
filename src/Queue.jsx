@@ -344,7 +344,15 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     triggerSave.current();
   }, [simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexThreshold, queueTeam, mgmtOverhead, wsOverhead]);
 
-  useEffect(() => { if (authed && !loading) ensureMonths(18); }, [authed, loading]);
+  // Run ensureMonths only after calendar data is loaded - use calendarMonths as dependency
+  const calendarInitialised = useRef(false);
+  useEffect(() => {
+    if (!authed || loading) return;
+    if (!calendarInitialised.current) {
+      calendarInitialised.current = true;
+      ensureMonths(18);
+    }
+  }, [authed, loading, calendarMonths.length]);
 
   // ── Calendar ───────────────────────────────────────────────────────────────
 
@@ -361,7 +369,11 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
       const merged = [...p];
       for (let i = 0; i < n; i++) {
         const label = generateMonthLabel(i);
-        if (!merged.find(x => x.label === label)) merged.push({ label, workingDays: 21 });
+        const existing = merged.find(x => x.label === label);
+        if (!existing) {
+          merged.push({ label, workingDays: 21 });
+        }
+        // Never modify existing months — their workingDays must be preserved
       }
       return merged;
     });

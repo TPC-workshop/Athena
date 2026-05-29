@@ -739,24 +739,41 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
                     </div>
                     <div style={{ fontSize: 10, color: '#aaa', marginBottom: 4 }}>Holiday overrides — leave blank to use accrual estimate:</div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-                      {activeKeys.map(k => {
-                        const rd = ROLE_DEFS.find(r => r.key === k);
-                        if (!rd) return null;
-                        const accrual = getAccrualPerDay(rd) * (m.workingDays || workingDaysDefault);
-                        return (
-                          <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <Dot c={rd.color} s={6} />
-                            <span style={{ fontSize: 10, color: '#888', minWidth: 60 }}>{rd.label.split(' ')[0]}</span>
-                            <input type="number" placeholder={accrual.toFixed(1)}
-                              value={m.holiday?.[k] !== undefined ? m.holiday[k] : ''}
-                              min="0" step="0.5"
-                              style={{ width: 50, padding: '2px 4px', border: '0.5px solid #ccc', borderRadius: 3, fontFamily: 'Georgia,serif', fontSize: 12 }}
-                              onChange={e => setCalendarMonths(p => p.map(x => x.label === m.label ? {
-                                ...x, holiday: { ...x.holiday, [k]: e.target.value === '' ? undefined : parseFloat(e.target.value) || 0 }
-                              } : x))} />
-                          </div>
-                        );
-                      })}
+                      {[
+                        // Standard roles
+                        ...activeKeys.map(k => {
+                          const rd = ROLE_DEFS.find(r => r.key === k);
+                          if (!rd) return null;
+                          const rh = roleHours && roleHours[k];
+                          const stdDay = rh ? (parseFloat(rh.stdDay) || rd.stdDay) : rd.stdDay;
+                          const dpw = rh ? (parseFloat(rh.daysPerWeek) || rd.daysPerWeek || 5) : (rd.daysPerWeek || 5);
+                          const workingDaysPerYear = 260 * dpw / 5;
+                          const accrualPerDay = (28 * stdDay) / workingDaysPerYear;
+                          const accrual = accrualPerDay * (m.workingDays || workingDaysDefault);
+                          return { key: k, color: rd.color, label: rd.label, accrual };
+                        }),
+                        // Extra roles (Harry, Oscar, Theo etc.)
+                        ...extraRoles.map(er => {
+                          const dpw = parseFloat(er.daysPerWeek) || 5;
+                          const stdDay = parseFloat(er.stdDay) || 7;
+                          const workingDaysPerYear = 260 * dpw / 5;
+                          const accrualPerDay = (28 * stdDay) / workingDaysPerYear;
+                          const accrual = accrualPerDay * (m.workingDays || workingDaysDefault);
+                          return { key: er.key, color: er.color, label: er.label, accrual };
+                        }),
+                      ].filter(Boolean).map(({ key: k, color, label, accrual }) => (
+                        <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <Dot c={color} s={6} />
+                          <span style={{ fontSize: 10, color: '#888', minWidth: 60 }}>{label.split(' ')[0]}</span>
+                          <input type="number" placeholder={accrual.toFixed(1)}
+                            value={m.holiday?.[k] !== undefined ? m.holiday[k] : ''}
+                            min="0" step="0.5"
+                            style={{ width: 50, padding: '2px 4px', border: '0.5px solid #ccc', borderRadius: 3, fontFamily: 'Georgia,serif', fontSize: 12 }}
+                            onChange={e => setCalendarMonths(p => p.map(x => x.label === m.label ? {
+                              ...x, holiday: { ...x.holiday, [k]: e.target.value === '' ? undefined : parseFloat(e.target.value) || 0 }
+                            } : x))} />
+                        </div>
+                      ))}
                     </div>
                   </div>
                 );

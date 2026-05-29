@@ -5,8 +5,12 @@ const QUEUE_PASSWORD = 'TPCLeadtime!';
 const API_PASSWORD = 'Ath3na-W0rk5h0p!';
 
 function getAccrualPerDay(rd) {
-  const workingDaysPerYear = 260 * (rd.daysPerWeek || 5) / 5;
-  return (28 * rd.stdDay) / workingDaysPerYear;
+  // Pro-rate the 28 day entitlement by contracted days per week
+  // e.g. 1d/wk = 28 × (1/5) = 5.6 days entitlement per year
+  const dpw = rd.daysPerWeek || 5;
+  const proRatedDays = 28 * (dpw / 5);
+  const workingDaysPerYear = 260 * dpw / 5;
+  return (proRatedDays * rd.stdDay) / workingDaysPerYear;
 }
 
 // Load Plan state (team, holiday etc.) — read only from Queue
@@ -437,8 +441,9 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     const rh = roleHours && roleHours[key];
     const stdDay = rh ? (parseFloat(rh.stdDay) || rd.stdDay) : rd.stdDay;
     const dpw = rh ? (parseFloat(rh.daysPerWeek) || rd.daysPerWeek || 5) : (rd.daysPerWeek || 5);
+    const proRatedDays = 28 * (dpw / 5);
     const workingDaysPerYear = 260 * dpw / 5;
-    const accrualPerDay = (28 * stdDay) / workingDaysPerYear;
+    const accrualPerDay = (proRatedDays * stdDay) / workingDaysPerYear;
     return accrualPerDay * wd;
   }
 
@@ -467,8 +472,9 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
       const dpw = parseFloat(er.daysPerWeek) || 5;
       const stdDay = parseFloat(er.stdDay) || 7;
       const gross = stdDay * (wd * dpw / 5);
+      const proRatedDays = 28 * (dpw / 5);
       const workingDaysPerYear = 260 * dpw / 5;
-      const accrualPerDay = (28 * stdDay) / workingDaysPerYear;
+      const accrualPerDay = (proRatedDays * stdDay) / workingDaysPerYear;
       const holiday = (month.holiday && month.holiday[er.key] !== undefined)
         ? parseFloat(month.holiday[er.key])
         : accrualPerDay * wd;
@@ -747,8 +753,9 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
                           const rh = roleHours && roleHours[k];
                           const stdDay = rh ? (parseFloat(rh.stdDay) || rd.stdDay) : rd.stdDay;
                           const dpw = rh ? (parseFloat(rh.daysPerWeek) || rd.daysPerWeek || 5) : (rd.daysPerWeek || 5);
+                          const proRatedDays = 28 * (dpw / 5);
                           const workingDaysPerYear = 260 * dpw / 5;
-                          const accrualPerDay = (28 * stdDay) / workingDaysPerYear;
+                          const accrualPerDay = (proRatedDays * stdDay) / workingDaysPerYear;
                           const accrual = accrualPerDay * (m.workingDays || workingDaysDefault);
                           return { key: k, color: rd.color, label: rd.label, accrual };
                         }),
@@ -756,8 +763,9 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
                         ...extraRoles.map(er => {
                           const dpw = parseFloat(er.daysPerWeek) || 5;
                           const stdDay = parseFloat(er.stdDay) || 7;
+                          const proRatedDays = 28 * (dpw / 5);
                           const workingDaysPerYear = 260 * dpw / 5;
-                          const accrualPerDay = (28 * stdDay) / workingDaysPerYear;
+                          const accrualPerDay = (proRatedDays * stdDay) / workingDaysPerYear;
                           const accrual = accrualPerDay * (m.workingDays || workingDaysDefault);
                           return { key: er.key, color: er.color, label: er.label, accrual };
                         }),

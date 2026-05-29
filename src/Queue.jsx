@@ -450,13 +450,18 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     const last = scheduled[scheduled.length - 1];
     if (!last.projectedMonth || last.projectedMonth === 'No calendar set' || last.projectedMonth === 'Beyond calendar') return null;
     const months = sortedMonths();
-    // Sum up working weeks for all months up to and including the completion month
-    // For the completion month, use the fraction of that month consumed
+    // Only count weeks from the first month that has capacity (i.e. first month scheduler uses)
+    // Find the first month with capacity > 0
+    const firstActiveIdx = months.findIndex(m => {
+      const wd = m.workingDays !== undefined ? parseInt(m.workingDays) : 21;
+      return wd > 0;
+    });
+    if (firstActiveIdx === -1) return null;
     let totalWeeks = 0;
-    for (const m of months) {
+    for (let i = firstActiveIdx; i < months.length; i++) {
+      const m = months[i];
       const mw = m.workingWeeks !== undefined ? parseFloat(m.workingWeeks) : (m.workingDays !== undefined ? parseInt(m.workingDays)/5 : 4.2);
       if (m.label === last.projectedMonth) {
-        // Add only the fraction of this month that's used
         totalWeeks += mw * (last.usedFrac || 0.5);
         break;
       }

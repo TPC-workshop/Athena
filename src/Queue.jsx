@@ -359,7 +359,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
 
   function getMonthProductionMins(month) {
     let totalMins = 0;
-    const wd = month.workingDays || workingDaysDefault;
+    const wd = (month.workingDays !== undefined && month.workingDays !== null) ? month.workingDays : workingDaysDefault;
     const usePlanHoliday = isPlanMonth(month.label);
 
     for (const key of activeKeys) {
@@ -458,7 +458,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
 
   // Calculate raw mins for a stream (before overhead deduction)
   function streamRawMins(stream, month) {
-    const wd = month.workingDays || workingDaysDefault;
+    const wd = (month.workingDays !== undefined && month.workingDays !== null) ? month.workingDays : workingDaysDefault;
     let mins = 0;
     // Standard roles
     for (const key of activeKeys) {
@@ -487,14 +487,14 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
 
   // Overhead — split proportionally between streams, pro-rated by working days
   function getOverheadForStream(stream, month) {
-    const wd = month.workingDays || workingDaysDefault;
+    const wd = (month.workingDays !== undefined && month.workingDays !== null) ? month.workingDays : workingDaysDefault;
     const simpleMins = streamRawMins('simple', month);
     const complexMins = streamRawMins('complex', month);
     const total = simpleMins + complexMins;
     if (total === 0) return 0;
     const frac = stream === 'simple' ? simpleMins / total : complexMins / total;
-    // Pro-rate overhead by working days so a 2-day month doesn't get hit with a full month of overhead
-    const dayFrac = wd / (workingDaysDefault || 21);
+    // Pro-rate overhead by working days — always use a standard 21-day month as the base
+    const dayFrac = wd / 21;
     const fixedOverhead = ((parseFloat(mgmtOverhead) || 0) + (parseFloat(wsOverhead) || 0)) * 60 * dayFrac;
     return fixedOverhead * frac;
   }
@@ -560,14 +560,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   const scheduledComplex = calcStream(complexOrders, getMonthComplexMins);
   const simpleLead = calcLeadTimeWeeks(scheduledSimple);
   const complexLead = calcLeadTimeWeeks(scheduledComplex);
-  // Debug: calculate first month capacity for display
-  const debugMonth = sortedMonths()[0];
-  const debugSimpleRaw = debugMonth ? streamRawMins('simple', debugMonth) : 0;
-  const debugComplexRaw = debugMonth ? streamRawMins('complex', debugMonth) : 0;
-  const debugSimpleOverhead = debugMonth ? getOverheadForStream('simple', debugMonth) : 0;
-  const debugComplexOverhead = debugMonth ? getOverheadForStream('complex', debugMonth) : 0;
-  const debugSimpleNet = debugSimpleRaw - debugSimpleOverhead;
-  const debugComplexNet = debugComplexRaw - debugComplexOverhead;
+
   const financeTotal = financeOrders.reduce((a, o) => a + calcOrderMins(o), 0);
   const overtimeMins = (parseFloat(overtimePool) || 0) * 60;
 
@@ -666,16 +659,6 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
             </label>
           </div>
         </div>
-
-        {/* DEBUG — remove after testing */}
-        {debugMonth && <div style={{background:'#fffbeb',border:'0.5px solid #fde68a',borderRadius:6,padding:'0.75rem',marginBottom:'1rem',fontSize:11,fontFamily:'monospace'}}>
-          <strong>Debug — {debugMonth.label} ({debugMonth.workingDays||workingDaysDefault} days)</strong><br/>
-          Simple raw: {(debugSimpleRaw/60).toFixed(1)}h · overhead: {(debugSimpleOverhead/60).toFixed(1)}h · net: {(debugSimpleNet/60).toFixed(1)}h<br/>
-          Complex raw: {(debugComplexRaw/60).toFixed(1)}h · overhead: {(debugComplexOverhead/60).toFixed(1)}h · net: {(debugComplexNet/60).toFixed(1)}h<br/>
-          Active keys: {activeKeys.join(', ')}<br/>
-          Extra roles: {extraRoles.map(er=>er.label+'('+er.stream+','+er.daysPerWeek+'d)').join(', ')||'none'}<br/>
-          Role streams: {JSON.stringify(roleStreams)}
-        </div>}
 
         {/* Lead time summary cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: '1rem' }}>

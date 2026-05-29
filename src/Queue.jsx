@@ -284,6 +284,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   const [saveMsg, setSaveMsg] = useState('');
   const saveTimer = useRef(null);
   const initialLoadDone = useRef(false);
+  const ensureMonthsRan = useRef(false);
 
   const [simpleOrders, setSimpleOrders] = useState([]);
   const [complexOrders, setComplexOrders] = useState([]);
@@ -348,6 +349,8 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
 
   useEffect(() => {
     if (!authed || loading || !initialLoadDone.current) return;
+    // Skip save if this change was caused by ensureMonths adding template months
+    if (ensureMonthsRan.current) { ensureMonthsRan.current = false; return; }
     triggerSave.current();
   }, [simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexThreshold]);
 
@@ -403,6 +406,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   }
 
   function ensureMonths(n = 18) {
+    ensureMonthsRan.current = true;
     setCalendarMonths(p => {
       const merged = [...p];
       for (let i = 0; i < n; i++) {

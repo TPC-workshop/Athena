@@ -460,7 +460,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     const monthIdx = months.indexOf(parts[0]);
     const year = parseInt(parts[1]);
     if (monthIdx === -1 || isNaN(year)) return null;
-    const endMonth = new Date(year, monthIdx + 1, 0); // last day of that month
+    const endMonth = new Date(year, monthIdx, 1); // first day of that month — order completes during this month
     const weeks = Math.round((endMonth - new Date()) / (1000 * 60 * 60 * 24 * 7));
     return Math.max(0, weeks);
   }
@@ -661,10 +661,12 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {sortedMonths().map(m => {
                 const cap = getMonthStreamMins('simple', m) + getMonthStreamMins('complex', m);
+                const wd = m.workingDays !== undefined ? parseInt(m.workingDays) : 21;
                 return (
                   <div key={m.label} style={{ background: '#f5f4f0', borderRadius: 4, padding: '5px 10px', fontSize: 11, textAlign: 'center', minWidth: 80 }}>
                     <div style={{ color: '#555', whiteSpace: 'nowrap', marginBottom: 2 }}>{m.label}</div>
                     <div style={{ fontWeight: 'bold', color: '#1a1a1a' }}>{(cap / 60).toFixed(0)}h</div>
+                    <div style={{ fontSize: 10, color: '#aaa' }}>{wd}d · {(wd/5).toFixed(1)}w</div>
                   </div>
                 );
               })}
@@ -679,11 +681,17 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
                       <span style={{ fontSize: 13, fontWeight: 'bold' }}>{m.label}</span>
                       <span style={{ fontSize: 11, color: '#1D9E75', fontWeight: 'bold' }}>{(cap / 60).toFixed(1)}h prod</span>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
                       <label style={{ fontSize: 11, color: '#888', whiteSpace: 'nowrap' }}>Working days:</label>
-                      <input type="number" value={m.workingDays} min="0" max="31"
-                        style={{ width: 56, padding: '3px 6px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', fontSize: 14 }}
+                      <input type="number" value={m.workingDays !== undefined ? m.workingDays : 21} min="0" max="31"
+                        style={{ width: 52, padding: '3px 6px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', fontSize: 16 }}
                         onChange={e => setCalendarMonths(p => p.map(x => x.label === m.label ? { ...x, workingDays: parseInt(e.target.value) || 0 } : x))} />
+                      <span style={{ fontSize: 11, color: '#aaa' }}>= {((m.workingDays !== undefined ? m.workingDays : 21) / 5).toFixed(1)} weeks</span>
+                      <button
+                        onClick={() => setCalendarMonths(p => p.map(x => x.label === m.label ? { ...x, workingDays: Math.max(0, (parseInt(x.workingDays) || 0) - 1) } : x))}
+                        style={{ padding: '4px 10px', border: '0.5px solid #ddd', borderRadius: 4, background: '#f5f4f0', fontFamily: 'Georgia,serif', fontSize: 13, cursor: 'pointer', color: '#555' }}>
+                        − 1 day
+                      </button>
                     </div>
                     {(()=>{
                       const wd = m.workingDays !== undefined ? parseInt(m.workingDays) : 21;

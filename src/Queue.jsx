@@ -441,10 +441,11 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     const rh = roleHours && roleHours[key];
     const stdDay = rh ? (parseFloat(rh.stdDay) || rd.stdDay) : rd.stdDay;
     const dpw = rh ? (parseFloat(rh.daysPerWeek) || rd.daysPerWeek || 5) : (rd.daysPerWeek || 5);
+    const daysWorked = wd * dpw / 5;
     const proRatedDays = 28 * (dpw / 5);
     const workingDaysPerYear = 260 * dpw / 5;
     const accrualPerDay = (proRatedDays * stdDay) / workingDaysPerYear;
-    return accrualPerDay * wd;
+    return accrualPerDay * daysWorked; // accrue only on days actually worked
   }
 
   // Helper: get holiday deduction for a role in a given month
@@ -471,13 +472,14 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
       if ((er.stream || 'complex') !== stream) continue;
       const dpw = parseFloat(er.daysPerWeek) || 5;
       const stdDay = parseFloat(er.stdDay) || 7;
-      const gross = stdDay * (wd * dpw / 5);
+      const daysWorked = wd * dpw / 5; // actual days this person works in the month
+      const gross = stdDay * daysWorked;
       const proRatedDays = 28 * (dpw / 5);
       const workingDaysPerYear = 260 * dpw / 5;
       const accrualPerDay = (proRatedDays * stdDay) / workingDaysPerYear;
       const holiday = (month.holiday && month.holiday[er.key] !== undefined)
         ? parseFloat(month.holiday[er.key])
-        : accrualPerDay * wd;
+        : accrualPerDay * daysWorked; // accrue only on days actually worked
       mins += Math.max(0, gross - holiday) * 60;
     }
     return mins;

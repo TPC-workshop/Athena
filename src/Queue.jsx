@@ -344,9 +344,39 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     triggerSave.current();
   }, [simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexThreshold, queueTeam, mgmtOverhead, wsOverhead]);
 
+  useEffect(() => { if (authed && !loading) ensureMonths(18); }, [authed, loading]);
+
   // ── Calendar ───────────────────────────────────────────────────────────────
 
-  function getMonthStreamMins(stream, month) {
+  function generateMonthLabel(offset) {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + offset);
+    return d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  }
+
+  function ensureMonths(n = 18) {
+    ensureMonthsRan.current = true;
+    setCalendarMonths(p => {
+      const merged = [...p];
+      for (let i = 0; i < n; i++) {
+        const label = generateMonthLabel(i);
+        if (!merged.find(x => x.label === label)) merged.push({ label, workingDays: 21 });
+      }
+      return merged;
+    });
+  }
+
+  function sortedMonths() {
+    return [...calendarMonths].sort((a, b) => {
+      const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+      const [aM, aY] = [months.indexOf(a.label.split(' ')[0]), parseInt(a.label.split(' ')[1])];
+      const [bM, bY] = [months.indexOf(b.label.split(' ')[0]), parseInt(b.label.split(' ')[1])];
+      return aY !== bY ? aY - bY : aM - bM;
+    });
+  }
+
+    function getMonthStreamMins(stream, month) {
     const wd = month.workingDays !== undefined ? parseInt(month.workingDays) : 21;
     if (wd === 0) return 0;
     let totalMins = 0;

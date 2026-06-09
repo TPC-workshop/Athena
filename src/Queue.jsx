@@ -172,7 +172,7 @@ const AddOrderForm = memo(function AddOrderForm({ stream, color, onAdd, onCancel
 });
 
 // ── Individual order card ────────────────────────────────────────────────────
-const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, spansMonth, color, onMoveUp, onMoveDown, onComplete, onRemove }) {
+const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, spansMonth, color, onMoveUp, onMoveDown, onComplete, onRemove, onUpdate }) {
   const mins = calcOrderMins(order);
   const bumpBtn = { padding: '3px 8px', border: '0.5px solid #ddd', borderRadius: 3, background: '#fff', fontFamily: 'Georgia,serif', fontSize: 11, cursor: 'pointer', color: '#555' };
   const btn = { padding: '8px 16px', border: '0.5px solid #999', borderRadius: 4, background: '#fff', fontFamily: 'Georgia,serif', fontSize: 13, cursor: 'pointer' };
@@ -211,21 +211,28 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
         <button onClick={onRemove}
           style={{ ...btn, padding: '4px 8px', fontSize: 11, color: '#b91c1c', borderColor: '#fca5a5' }}>×</button>
       </div>
-      {order.orderDate && (()=>{
-        const ordered = new Date(order.orderDate);
-        const elapsed = Math.round((new Date() - ordered) / (1000*60*60*24));
-        return (
-          <div style={{ fontSize: 11, color: elapsed > 60 ? '#b91c1c' : '#aaa', marginTop: 5, paddingLeft: 4, fontWeight: elapsed > 60 ? 'bold' : 'normal' }}>
-            Ordered {ordered.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})} · {elapsed} day{elapsed!==1?'s':''} ago{elapsed>60?' ⚠':''}
-          </div>
-        );
-      })()}
+      {/* Order date — always editable */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, paddingLeft: 4 }}>
+        <label style={{ fontSize: 11, color: '#aaa', whiteSpace: 'nowrap' }}>Order date:</label>
+        <input type="date" value={order.orderDate || ''}
+          onChange={e => onUpdate && onUpdate(order.id, { orderDate: e.target.value })}
+          style={{ fontSize: 12, padding: '2px 6px', border: '0.5px solid #ddd', borderRadius: 4, fontFamily: 'Georgia,serif', color: '#555', background: '#fafaf8' }} />
+        {order.orderDate && (()=>{
+          const ordered = new Date(order.orderDate);
+          const elapsed = Math.round((new Date() - ordered) / (1000*60*60*24));
+          return (
+            <span style={{ fontSize: 11, color: elapsed > 60 ? '#b91c1c' : '#aaa', fontWeight: elapsed > 60 ? 'bold' : 'normal' }}>
+              {elapsed} day{elapsed!==1?'s':''} ago{elapsed>60?' ⚠':''}
+            </span>
+          );
+        })()}
+      </div>
     </div>
   );
 });
 
 // ── Stream section ───────────────────────────────────────────────────────────
-function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo, setAddingTo, onAdd, onMoveUp, onMoveDown, onComplete, onRemove, complexThreshold }) {
+function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo, setAddingTo, onAdd, onMoveUp, onMoveDown, onComplete, onRemove, onUpdate, complexThreshold }) {
   const totalMins = orders.reduce((a, o) => a + calcOrderMins(o), 0);
   const btn = { padding: '8px 16px', border: '0.5px solid #999', borderRadius: 4, background: '#fff', fontFamily: 'Georgia,serif', fontSize: 13, cursor: 'pointer' };
 
@@ -263,7 +270,8 @@ function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo
               onMoveUp={() => onMoveUp(stream, idx)}
               onMoveDown={() => onMoveDown(stream, idx)}
               onComplete={() => onComplete(stream, o.id)}
-              onRemove={() => onRemove(stream, o.id)} />
+              onRemove={() => onRemove(stream, o.id)}
+              onUpdate={(id, updates) => onUpdate(stream, id, updates)} />
           );
         })}
         {addingTo === stream && (
@@ -486,6 +494,12 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     else setFinanceOrders(p => [...p, full]);
     setQCount(p => p + 1);
     setAddingTo(null);
+  }
+
+  function updateOrder(stream, id, updates) {
+    if (stream === 'simple') setSimpleOrders(p => p.map(o => o.id === id ? { ...o, ...updates } : o));
+    else if (stream === 'complex') setComplexOrders(p => p.map(o => o.id === id ? { ...o, ...updates } : o));
+    else if (stream === 'finance') setFinanceOrders(p => p.map(o => o.id === id ? { ...o, ...updates } : o));
   }
 
   function removeOrder(stream, id) {
@@ -753,14 +767,14 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
           orders={simpleOrders} scheduled={scheduledSimple} lead={simpleLead}
           addingTo={addingTo} setAddingTo={setAddingTo}
           onAdd={addOrder} onMoveUp={moveUp} onMoveDown={moveDown}
-          onComplete={removeOrder} onRemove={removeOrder} complexThreshold={complexThreshold}/>
+          onComplete={removeOrder} onRemove={removeOrder} onUpdate={updateOrder} complexThreshold={complexThreshold}/>
 
         {/* Complex stream */}
         <StreamSection title="Complex builds" color="#7F77DD" stream="complex"
           orders={complexOrders} scheduled={scheduledComplex} lead={complexLead}
           addingTo={addingTo} setAddingTo={setAddingTo}
           onAdd={addOrder} onMoveUp={moveUp} onMoveDown={moveDown}
-          onComplete={removeOrder} onRemove={removeOrder} complexThreshold={complexThreshold}/>
+          onComplete={removeOrder} onRemove={removeOrder} onUpdate={updateOrder} complexThreshold={complexThreshold}/>
 
         {/* Finance overtime */}
         <div style={{ background: '#fff', border: '0.5px solid #ddd', borderRadius: 8, marginBottom: '1rem', borderTop: '3px solid #BA7517', overflow: 'hidden' }}>
@@ -797,7 +811,8 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
                 onMoveUp={() => moveUp('finance', idx)}
                 onMoveDown={() => moveDown('finance', idx)}
                 onComplete={() => removeOrder('finance', o.id)}
-                onRemove={() => removeOrder('finance', o.id)} />
+                onRemove={() => removeOrder('finance', o.id)}
+                onUpdate={(id, updates) => updateOrder('finance', id, updates)} />
             ))}
             {addingTo === 'finance' && (
               <AddOrderForm stream="finance" color="#BA7517"

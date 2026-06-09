@@ -172,7 +172,7 @@ const AddOrderForm = memo(function AddOrderForm({ stream, color, onAdd, onCancel
 });
 
 // ── Individual order card ────────────────────────────────────────────────────
-const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, spansMonth, color, onMoveUp, onMoveDown, onComplete, onRemove, onUpdate }) {
+const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, spansMonth, usedFrac, color, onMoveUp, onMoveDown, onComplete, onRemove, onUpdate }) {
   const mins = calcOrderMins(order);
   const bumpBtn = { padding: '3px 8px', border: '0.5px solid #ddd', borderRadius: 3, background: '#fff', fontFamily: 'Georgia,serif', fontSize: 11, cursor: 'pointer', color: '#555' };
   const btn = { padding: '8px 16px', border: '0.5px solid #999', borderRadius: 4, background: '#fff', fontFamily: 'Georgia,serif', fontSize: 13, cursor: 'pointer' };
@@ -220,14 +220,19 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
         {order.orderDate && projectedMonth && (()=>{
           const ordered = new Date(order.orderDate);
           const elapsed = Math.round((new Date() - ordered) / (1000*60*60*24));
-          // Calculate total weeks from order date to projected completion month
+          // Calculate total weeks from order date to precise completion point within month
           const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
           const parts = projectedMonth.split(' ');
           const mIdx = monthNames.indexOf(parts[0]);
           const yr = parseInt(parts[1]);
-          const totalWeeks = (!isNaN(mIdx) && !isNaN(yr))
-            ? Math.round((new Date(yr, mIdx + 1, 0) - ordered) / (1000*60*60*24*7))
-            : null;
+          let totalWeeks = null;
+          if (!isNaN(mIdx) && !isNaN(yr)) {
+            const frac = usedFrac || 0.5;
+            const daysInMonth = new Date(yr, mIdx + 1, 0).getDate();
+            const completionDay = Math.max(1, Math.round(frac * daysInMonth));
+            const completionDate = new Date(yr, mIdx, completionDay);
+            totalWeeks = Math.round((completionDate - ordered) / (1000*60*60*24*7));
+          }
           return (
             <span style={{ fontSize: 11, color: elapsed > 60 ? '#b91c1c' : '#aaa', fontWeight: elapsed > 60 ? 'bold' : 'normal' }}>
               {elapsed} day{elapsed!==1?'s':''} waiting
@@ -284,7 +289,7 @@ function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo
           const sc = scheduled.find(s => s.id === o.id);
           return (
             <OrderCard key={o.id} order={o} stream={stream} idx={idx}
-              projectedMonth={sc?.projectedMonth} spansMonth={sc?.spansMonth}
+              projectedMonth={sc?.projectedMonth} spansMonth={sc?.spansMonth} usedFrac={sc?.usedFrac}
               color={color}
               onMoveUp={() => onMoveUp(stream, idx)}
               onMoveDown={() => onMoveDown(stream, idx)}

@@ -217,12 +217,31 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
         <input type="date" value={order.orderDate || ''}
           onChange={e => onUpdate && onUpdate(order.id, { orderDate: e.target.value })}
           style={{ fontSize: 12, padding: '2px 6px', border: '0.5px solid #ddd', borderRadius: 4, fontFamily: 'Georgia,serif', color: '#555', background: '#fafaf8' }} />
-        {order.orderDate && (()=>{
+        {order.orderDate && projectedMonth && (()=>{
+          const ordered = new Date(order.orderDate);
+          const elapsed = Math.round((new Date() - ordered) / (1000*60*60*24));
+          // Calculate total weeks from order date to projected completion month
+          const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+          const parts = projectedMonth.split(' ');
+          const mIdx = monthNames.indexOf(parts[0]);
+          const yr = parseInt(parts[1]);
+          const totalWeeks = (!isNaN(mIdx) && !isNaN(yr))
+            ? Math.round((new Date(yr, mIdx + 1, 0) - ordered) / (1000*60*60*24*7))
+            : null;
+          return (
+            <span style={{ fontSize: 11, color: elapsed > 60 ? '#b91c1c' : '#aaa', fontWeight: elapsed > 60 ? 'bold' : 'normal' }}>
+              {elapsed} day{elapsed!==1?'s':''} waiting
+              {totalWeeks !== null && <> · <strong style={{color:'#555'}}>{totalWeeks}w total</strong> order to completion</>}
+              {elapsed>60?' ⚠':''}
+            </span>
+          );
+        })()}
+        {order.orderDate && !projectedMonth && (()=>{
           const ordered = new Date(order.orderDate);
           const elapsed = Math.round((new Date() - ordered) / (1000*60*60*24));
           return (
             <span style={{ fontSize: 11, color: elapsed > 60 ? '#b91c1c' : '#aaa', fontWeight: elapsed > 60 ? 'bold' : 'normal' }}>
-              {elapsed} day{elapsed!==1?'s':''} ago{elapsed>60?' ⚠':''}
+              {elapsed} day{elapsed!==1?'s':''} waiting{elapsed>60?' ⚠':''}
             </span>
           );
         })()}

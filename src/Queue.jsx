@@ -4,25 +4,115 @@ import { ROLE_DEFS, QTYS, UNIT_TYPES, genClientTasks } from './data.js';
 const QUEUE_PASSWORD = 'TPCLeadtime!';
 const API_PASSWORD = 'Ath3na-W0rk5h0p!';
 
+// ── Portal helpers ────────────────────────────────────────────────────────────
+const PORTAL_STAGES = [
+  { value: 'preparing', label: 'Preparing'   },
+  { value: 'building',  label: 'In build'    },
+  { value: 'finishing', label: 'Finishing'   },
+  { value: 'invoice',   label: 'Invoice due' },
+  { value: 'delivery',  label: 'Ready'       },
+  { value: 'delivered', label: 'Delivered'   },
+]
+
+function generateToken() {
+  const chars = 'abcdefghijkmnpqrstuvwxyz23456789'
+  return Array.from(crypto.getRandomValues(new Uint8Array(12)))
+    .map(b => chars[b % chars.length])
+    .join('')
+}
+
+const PortalPanel = memo(function PortalPanel({ order, onUpdate }) {
+  const [copied, setCopied] = useState(false)
+  const token = order.portalToken || ''
+  const portalUrl = token ? `https://order.thepetcarpenter.co.uk/${token}` : ''
+
+  function handleGenerate() {
+    onUpdate(order.id, { portalToken: generateToken() })
+  }
+
+  function handleCopy() {
+    if (!portalUrl) return
+    navigator.clipboard.writeText(portalUrl).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  const ps = {
+    wrap:     { marginTop: 10, borderTop: '0.5px solid #f0f0f0', paddingTop: 10 },
+    label:    { fontSize: 9, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.07em', color: '#888', marginBottom: 6 },
+    row:      { display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 },
+    select:   { fontSize: 11, padding: '3px 6px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', background: '#fff' },
+    smallInp: { fontSize: 11, padding: '3px 6px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', background: '#fff' },
+    textarea: { width: '100%', fontSize: 11, padding: '5px 7px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', resize: 'vertical', minHeight: 44, marginBottom: 6 },
+    tokenBox: { fontSize: 10, padding: '3px 8px', background: '#f5f4f0', border: '0.5px solid #ddd', borderRadius: 3, color: '#555', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 240 },
+    btn:      { fontSize: 11, padding: '3px 10px', border: '0.5px solid #999', borderRadius: 4, background: '#fff', fontFamily: 'Georgia,serif', cursor: 'pointer' },
+    btnGreen: { fontSize: 11, padding: '3px 10px', border: '0.5px solid #1D9E75', borderRadius: 4, background: '#1D9E75', color: '#fff', fontFamily: 'Georgia,serif', cursor: 'pointer' },
+  }
+
+  return (
+    <div style={ps.wrap}>
+      <div style={ps.label}>Customer portal</div>
+      <div style={ps.row}>
+        <span style={{ fontSize: 11, color: '#888' }}>Stage:</span>
+        <select style={ps.select} value={order.portalStage || 'preparing'}
+          onChange={e => onUpdate(order.id, { portalStage: e.target.value })}>
+          {PORTAL_STAGES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+        </select>
+        <span style={{ fontSize: 11, color: '#888', marginLeft: 4 }}>Progress %:</span>
+        <input type="number" min="0" max="100" style={{ ...ps.smallInp, width: 56 }}
+          value={order.portalPct || 0}
+          onChange={e => onUpdate(order.id, { portalPct: Math.min(100, Math.max(0, parseInt(e.target.value) || 0)) })} />
+      </div>
+      <div style={ps.row}>
+        <span style={{ fontSize: 11, color: '#888' }}>Colour:</span>
+        <input style={{ ...ps.smallInp, width: 140 }}
+          value={order.portalColour || ''} placeholder="e.g. Lamp Room Grey"
+          onChange={e => onUpdate(order.id, { portalColour: e.target.value })} />
+        <span style={{ fontSize: 11, color: '#888' }}>Finish:</span>
+        <input style={{ ...ps.smallInp, width: 100 }}
+          value={order.portalFinish || ''} placeholder="e.g. Oak"
+          onChange={e => onUpdate(order.id, { portalFinish: e.target.value })} />
+      </div>
+      <div style={ps.row}>
+        <span style={{ fontSize: 11, color: '#888' }}>Est. delivery date:</span>
+        <input type="date" style={ps.smallInp}
+          value={order.targetDate || ''}
+          onChange={e => onUpdate(order.id, { targetDate: e.target.value })} />
+      </div>
+      <textarea style={ps.textarea}
+        value={order.portalMessage || ''} placeholder="Personal message shown to customer on portal…"
+        onChange={e => onUpdate(order.id, { portalMessage: e.target.value })} />
+      <div style={ps.row}>
+        {token ? (
+          <>
+            <span style={ps.tokenBox} title={portalUrl}>{portalUrl}</span>
+            <button style={ps.btn} onClick={handleCopy}>{copied ? '✓ Copied' : 'Copy link'}</button>
+            <button style={ps.btn} onClick={handleGenerate}>↺ Regenerate</button>
+          </>
+        ) : (
+          <button style={ps.btnGreen} onClick={handleGenerate}>+ Generate portal link</button>
+        )}
+      </div>
+    </div>
+  )
+})
+
 function getAccrualPerDay(rd) {
-  // Pro-rate the 28 day entitlement by contracted days per week
-  // e.g. 1d/wk = 28 × (1/5) = 5.6 days entitlement per year
   const dpw = rd.daysPerWeek || 5;
   const proRatedDays = 28 * (dpw / 5);
   const workingDaysPerYear = 260 * dpw / 5;
   return (proRatedDays * rd.stdDay) / workingDaysPerYear;
 }
 
-// Load Plan state (team, holiday etc.) — read only from Queue
 async function apiLoadPlan() {
   const r = await fetch('/api/state', { headers: { 'x-athena-password': API_PASSWORD } });
   if (!r.ok) throw new Error('Plan load failed');
   return r.json();
 }
-// Queue state is stored under a separate key so Plan saves never overwrite it
 async function apiLoadQueue() {
   const r = await fetch('/api/queue-state', { headers: { 'x-athena-password': API_PASSWORD } });
-  if (!r.ok) return {}; // empty on first load is fine
+  if (!r.ok) return {};
   return r.json();
 }
 async function apiSaveQueue(data) {
@@ -39,15 +129,13 @@ function Dot({ c, s = 9 }) {
 
 function calcOrderMins(order) {
   if (!order.qtys) return (order.estimatedHours || 0) * 60;
-  // Calculate production task minutes via genClientTasks (without bespoke to avoid string concat bug)
   const prodTasks = genClientTasks({
     ...order,
     id: 'tmp',
-    bespoke: [], // exclude bespoke here, add separately below
+    bespoke: [],
     unitType: order.unitType || 'painted',
   });
   const prodMins = prodTasks.reduce((a, t) => a + (parseInt(t.m) || 0), 0);
-  // Add bespoke minutes explicitly with safe parseInt
   const bespokeMins = (order.bespoke || []).reduce((a, b) => {
     const m = parseInt(b.mins) || 0;
     return b.desc && m > 0 ? a + m : a;
@@ -78,7 +166,6 @@ function QueueLogin({ onAuth }) {
   );
 }
 
-// ── Add order form — lifted outside main component to prevent remount ────────
 const AddOrderForm = memo(function AddOrderForm({ stream, color, onAdd, onCancel, complexThreshold }) {
   const [name, setName] = useState('');
   const [orderDate, setOrderDate] = useState('');
@@ -124,21 +211,15 @@ const AddOrderForm = memo(function AddOrderForm({ stream, color, onAdd, onCancel
           </div>
         ))}
       </div>
-      {/* Hours estimate + complexity flag */}
       <div style={{ padding: '8px 10px', borderRadius: 4, marginBottom: 10, background: wrongStream ? '#fef2f2' : isOverThreshold ? '#fdf4ff' : '#f0fdf4', border: `0.5px solid ${wrongStream ? '#fca5a5' : isOverThreshold ? '#e9d5ff' : '#bbf7d0'}` }}>
         <div style={{ fontSize: 13, fontWeight: 'bold', color: wrongStream ? '#b91c1c' : isOverThreshold ? '#7F77DD' : '#166534' }}>
           {hrs > 0 ? `${hrs.toFixed(1)} hours` : 'Enter quantities above'}
           {hrs >= threshold && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 'normal' }}>— complex build ({threshold}h+ threshold)</span>}
           {hrs > 0 && hrs < threshold && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 'normal' }}>— simple build (under {threshold}h threshold)</span>}
         </div>
-        {wrongStream && stream === 'simple' && (
-          <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 3 }}>⚠ This order is over {threshold}h — consider adding to the Complex queue instead.</div>
-        )}
-        {wrongStream && stream === 'complex' && (
-          <div style={{ fontSize: 11, color: '#92400e', marginTop: 3 }}>⚠ This order is under {threshold}h — consider adding to the Simple queue instead.</div>
-        )}
+        {wrongStream && stream === 'simple' && <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 3 }}>⚠ This order is over {threshold}h — consider adding to the Complex queue instead.</div>}
+        {wrongStream && stream === 'complex' && <div style={{ fontSize: 11, color: '#92400e', marginTop: 3 }}>⚠ This order is under {threshold}h — consider adding to the Simple queue instead.</div>}
       </div>
-      {/* Bespoke items */}
       <div style={{ marginBottom: 10 }}>
         <div style={{ fontSize: 11, color: '#888', marginBottom: 5 }}>Bespoke <span style={{ color: '#bbb' }}>— add any non-standard tasks with their time</span></div>
         {bespoke.map((b, i) => (
@@ -156,9 +237,8 @@ const AddOrderForm = memo(function AddOrderForm({ stream, color, onAdd, onCancel
           + Add bespoke
         </button>
       </div>
-
       <div style={{ display: 'flex', gap: 8 }}>
-        <button onClick={() => onAdd({ name, orderDate, unitType, qtys: { ...qtys }, bespoke: bespoke.filter(b => b.desc && parseInt(b.mins) > 0).map(b => ({...b, mins: parseInt(b.mins)||0})) })}
+        <button onClick={() => onAdd({ name, orderDate, unitType, qtys: { ...qtys }, bespoke: bespoke.filter(b => b.desc && parseInt(b.mins) > 0).map(b => ({ ...b, mins: parseInt(b.mins) || 0 })) })}
           style={{ padding: '10px 22px', border: 'none', borderRadius: 4, background: '#1a1a1a', color: '#fff', fontFamily: 'Georgia,serif', fontSize: 13, cursor: 'pointer' }}>
           Add to queue
         </button>
@@ -171,8 +251,8 @@ const AddOrderForm = memo(function AddOrderForm({ stream, color, onAdd, onCancel
   );
 });
 
-// ── Individual order card ────────────────────────────────────────────────────
 const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, spansMonth, usedFrac, color, onMoveUp, onMoveDown, onComplete, onRemove, onUpdate }) {
+  const [showPortal, setShowPortal] = useState(false)
   const mins = calcOrderMins(order);
   const bumpBtn = { padding: '3px 8px', border: '0.5px solid #ddd', borderRadius: 3, background: '#fff', fontFamily: 'Georgia,serif', fontSize: 11, cursor: 'pointer', color: '#555' };
   const btn = { padding: '8px 16px', border: '0.5px solid #999', borderRadius: 4, background: '#fff', fontFamily: 'Georgia,serif', fontSize: 13, cursor: 'pointer' };
@@ -180,30 +260,27 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
   return (
     <div style={{ background: '#fff', border: '0.5px solid #ddd', borderRadius: 6, padding: '0.75rem 1rem', marginBottom: 8, borderLeft: `3px solid ${color}` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        {/* Priority bumps */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <button onClick={onMoveUp} style={bumpBtn}>▲</button>
           <button onClick={onMoveDown} style={bumpBtn}>▼</button>
         </div>
         <span style={{ fontSize: 12, color: '#aaa', minWidth: 22, textAlign: 'center' }}>#{idx + 1}</span>
-
-        {/* Client name */}
         <span style={{ flex: 1, fontSize: 14, fontWeight: 'bold', minWidth: 120 }}>{order.name || 'Unnamed'}</span>
-
-        {/* Unit type */}
         <span style={{ fontSize: 11, color: '#888', whiteSpace: 'nowrap' }}>{UNIT_TYPES.find(u => u.key === (order.unitType || 'painted'))?.label || 'Painted'}</span>
-
-        {/* Hours */}
         <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, background: '#f5f4f0', color: '#555', border: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>
           {(mins / 60).toFixed(1)}h
         </span>
-
-        {/* Expected completion — prominent */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: 100 }}>
           <span style={{ fontSize: 13, fontWeight: 'bold', color, whiteSpace: 'nowrap' }}>{projectedMonth || '—'}</span>
           <span style={{ fontSize: 10, color: '#aaa' }}>est. completion{spansMonth ? ' · spans months' : ''}</span>
         </div>
-
+        <button onClick={() => setShowPortal(p => !p)}
+          style={{ ...btn, padding: '4px 10px', fontSize: 11,
+            background: order.portalToken ? '#f0fdf4' : '#f5f4f0',
+            color: order.portalToken ? '#166534' : '#888',
+            borderColor: order.portalToken ? '#bbf7d0' : '#ddd' }}>
+          {order.portalToken ? '🔗 Portal' : 'Portal'}
+        </button>
         <button onClick={onComplete}
           style={{ ...btn, padding: '4px 12px', fontSize: 11, background: '#f0fdf4', color: '#166534', borderColor: '#bbf7d0' }}>
           ✓ Complete
@@ -211,16 +288,14 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
         <button onClick={onRemove}
           style={{ ...btn, padding: '4px 8px', fontSize: 11, color: '#b91c1c', borderColor: '#fca5a5' }}>×</button>
       </div>
-      {/* Order date — always editable */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, paddingLeft: 4 }}>
         <label style={{ fontSize: 11, color: '#aaa', whiteSpace: 'nowrap' }}>Order date:</label>
         <input type="date" value={order.orderDate || ''}
           onChange={e => onUpdate && onUpdate(order.id, { orderDate: e.target.value })}
-          style={{ fontSize: 12, padding: '2px 6px', border: '0.5px solid #ddd', borderRadius: 4, fontFamily: 'Georgia,serif', color: '#555', background: '#fafaf8' }} />
-        {order.orderDate && projectedMonth && (()=>{
+          style={{ fontSize: 12, padding: '2px 6px', border: '0.5px solid #ddd', borderRadius: 4, fontFamily: 'Georgia,serif', color: '#555', background: '#fafal8' }} />
+        {order.orderDate && projectedMonth && (() => {
           const ordered = new Date(order.orderDate);
-          const elapsed = Math.round((new Date() - ordered) / (1000*60*60*24));
-          // Calculate total weeks from order date to precise completion point within month
+          const elapsed = Math.round((new Date() - ordered) / (1000 * 60 * 60 * 24));
           const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
           const parts = projectedMonth.split(' ');
           const mIdx = monthNames.indexOf(parts[0]);
@@ -231,31 +306,31 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
             const daysInMonth = new Date(yr, mIdx + 1, 0).getDate();
             const completionDay = Math.max(1, Math.round(frac * daysInMonth));
             const completionDate = new Date(yr, mIdx, completionDay);
-            totalWeeks = Math.round((completionDate - ordered) / (1000*60*60*24*7));
+            totalWeeks = Math.round((completionDate - ordered) / (1000 * 60 * 60 * 24 * 7));
           }
           return (
             <span style={{ fontSize: 11, color: elapsed > 60 ? '#b91c1c' : '#aaa', fontWeight: elapsed > 60 ? 'bold' : 'normal' }}>
-              {elapsed} day{elapsed!==1?'s':''} waiting
-              {totalWeeks !== null && <> · <strong style={{color:'#555'}}>{totalWeeks}w total</strong> order to completion</>}
-              {elapsed>60?' ⚠':''}
+              {elapsed} day{elapsed !== 1 ? 's' : ''} waiting
+              {totalWeeks !== null && <> · <strong style={{ color: '#555' }}>{totalWeeks}w total</strong> order to completion</>}
+              {elapsed > 60 ? ' ⚠' : ''}
             </span>
           );
         })()}
-        {order.orderDate && !projectedMonth && (()=>{
+        {order.orderDate && !projectedMonth && (() => {
           const ordered = new Date(order.orderDate);
-          const elapsed = Math.round((new Date() - ordered) / (1000*60*60*24));
+          const elapsed = Math.round((new Date() - ordered) / (1000 * 60 * 60 * 24));
           return (
             <span style={{ fontSize: 11, color: elapsed > 60 ? '#b91c1c' : '#aaa', fontWeight: elapsed > 60 ? 'bold' : 'normal' }}>
-              {elapsed} day{elapsed!==1?'s':''} waiting{elapsed>60?' ⚠':''}
+              {elapsed} day{elapsed !== 1 ? 's' : ''} waiting{elapsed > 60 ? ' ⚠' : ''}
             </span>
           );
         })()}
       </div>
+      {showPortal && <PortalPanel order={order} onUpdate={onUpdate} />}
     </div>
   );
 });
 
-// ── Stream section ───────────────────────────────────────────────────────────
 function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo, setAddingTo, onAdd, onMoveUp, onMoveDown, onComplete, onRemove, onUpdate, complexThreshold }) {
   const totalMins = orders.reduce((a, o) => a + calcOrderMins(o), 0);
   const btn = { padding: '8px 16px', border: '0.5px solid #999', borderRadius: 4, background: '#fff', fontFamily: 'Georgia,serif', fontSize: 13, cursor: 'pointer' };
@@ -308,7 +383,6 @@ function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo
   );
 }
 
-// ── Main Queue component ─────────────────────────────────────────────────────
 export default function Queue({ activeKeys: propActiveKeys, workingDays: propWorkingDays, mgmtOverheadBudget: propMgmt, wsOverheadBudget: propWs }) {
   const [authed, setAuthed] = useState(() => sessionStorage.getItem('queueAuthed') === '1');
   const [loading, setLoading] = useState(true);
@@ -328,11 +402,10 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   const [addingTo, setAddingTo] = useState(null);
   const [expandedMonths, setExpandedMonths] = useState(false);
 
-  // Self-contained queue team — completely independent from Plan
   const [queueTeam, setQueueTeam] = useState([
-    { id:'qt_manager',  name:'Manager',       stdDay:7.5, daysPerWeek:5, stream:'complex' },
-    { id:'qt_maker1',   name:'Cabinet maker', stdDay:7,   daysPerWeek:5, stream:'simple'  },
-    { id:'qt_assistant',name:'Assistant',     stdDay:7,   daysPerWeek:5, stream:'simple'  },
+    { id: 'qt_manager',   name: 'Manager',       stdDay: 7.5, daysPerWeek: 5, stream: 'complex' },
+    { id: 'qt_maker1',    name: 'Cabinet maker',  stdDay: 7,   daysPerWeek: 5, stream: 'simple'  },
+    { id: 'qt_assistant', name: 'Assistant',      stdDay: 7,   daysPerWeek: 5, stream: 'simple'  },
   ]);
   const [mgmtOverhead, setMgmtOverhead] = useState(20);
   const [wsOverhead, setWsOverhead] = useState(28);
@@ -361,7 +434,6 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     setSaveMsg('Saving…');
     saveTimer.current = setTimeout(async () => {
       setSaving(true);
-      // Save ONLY queue data — never touches Plan state
       await apiSaveQueue({ simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexThreshold, queueTeam, mgmtOverhead, wsOverhead });
       setSaving(false);
       setSaveMsg('✓ Saved');
@@ -371,12 +443,10 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
 
   useEffect(() => {
     if (!authed || loading || !initialLoadDone.current) return;
-    // Skip save if this change was caused by ensureMonths adding template months
     if (ensureMonthsRan.current) { ensureMonthsRan.current = false; return; }
     triggerSave.current();
   }, [simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexThreshold, queueTeam, mgmtOverhead, wsOverhead]);
 
-  // Run ensureMonths only after calendar data is loaded - use calendarMonths as dependency
   const calendarInitialised = useRef(false);
   useEffect(() => {
     if (!authed || loading) return;
@@ -385,8 +455,6 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
       ensureMonths(18);
     }
   }, [authed, loading, calendarMonths.length]);
-
-  // ── Calendar ───────────────────────────────────────────────────────────────
 
   function generateMonthLabel(offset) {
     const d = new Date();
@@ -401,11 +469,9 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
       const merged = [...p];
       for (let i = 0; i < n; i++) {
         const label = generateMonthLabel(i);
-        const existing = merged.find(x => x.label === label);
-        if (!existing) {
+        if (!merged.find(x => x.label === label)) {
           merged.push({ label, workingDays: 21, workingWeeks: 4.2 });
         }
-        // Never modify existing months — their workingDays must be preserved
       }
       return merged;
     });
@@ -420,11 +486,9 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     });
   }
 
-    function getMonthStreamMins(stream, month) {
-    // Working days drives capacity, working weeks drives lead time counter
+  function getMonthStreamMins(stream, month) {
     const wd = month.workingDays !== undefined ? parseInt(month.workingDays) : 21;
     if (wd === 0) return 0;
-    // Hours available = team hours after holiday accrual
     let totalMins = 0;
     const teamInStream = queueTeam.filter(m => m.stream === stream);
     for (const m of teamInStream) {
@@ -432,30 +496,22 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
       const stdDay = parseFloat(m.stdDay) || 7;
       const daysWorked = wd * dpw / 5;
       const gross = stdDay * daysWorked;
-      // Holiday accrual = 10.77% of hours worked
       const holiday = gross * 0.1077;
       totalMins += Math.max(0, gross - holiday) * 60;
     }
-    // Overhead: ws overhead from simple pool, mgmt overhead from complex pool
-    // Pro-rated by working days (wd/21 of monthly budget)
     const dayFrac = wd / 21;
-    if (stream === 'simple') {
-      totalMins -= (parseFloat(wsOverhead) || 0) * 60 * dayFrac;
-    } else {
-      totalMins -= (parseFloat(mgmtOverhead) || 0) * 60 * dayFrac;
-    }
+    if (stream === 'simple') totalMins -= (parseFloat(wsOverhead) || 0) * 60 * dayFrac;
+    else totalMins -= (parseFloat(mgmtOverhead) || 0) * 60 * dayFrac;
     return Math.max(0, totalMins);
   }
 
-    function calcStream(orders, getCapFn) {
+  function calcStream(orders, getCapFn) {
     const months = sortedMonths();
     if (!months.length) return orders.map(o => ({ ...o, projectedMonth: 'No calendar set' }));
     const result = [];
-    const queue = [...orders];
     let monthIdx = 0;
     let usedMins = 0;
-
-    for (const order of queue) {
+    for (const order of orders) {
       const orderMins = calcOrderMins(order);
       let allocated = false;
       while (monthIdx < months.length) {
@@ -482,13 +538,11 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     const last = scheduled[scheduled.length - 1];
     if (!last.projectedMonth || last.projectedMonth === 'No calendar set' || last.projectedMonth === 'Beyond calendar') return null;
     const months = sortedMonths();
-    // Sum working weeks from first active month (days > 0) through to completion month
-    // No date logic — purely based on the calendar you built
     let totalWeeks = 0;
     let counting = false;
     for (const m of months) {
       const wd = m.workingDays !== undefined ? parseInt(m.workingDays) : 21;
-      if (!counting && wd > 0) counting = true; // start from first month with days
+      if (!counting && wd > 0) counting = true;
       if (!counting) continue;
       const mw = m.workingWeeks !== undefined ? parseFloat(m.workingWeeks) : (wd / 5);
       if (m.label === last.projectedMonth) {
@@ -504,11 +558,8 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   const scheduledComplex = calcStream(complexOrders, m => getMonthStreamMins('complex', m));
   const simpleLead = calcLeadTimeWeeks(scheduledSimple);
   const complexLead = calcLeadTimeWeeks(scheduledComplex);
-
   const financeTotal = financeOrders.reduce((a, o) => a + calcOrderMins(o), 0);
   const overtimeMins = (parseFloat(overtimePool) || 0) * 60;
-
-  // ── Order actions ──────────────────────────────────────────────────────────
 
   function addOrder(stream, order) {
     const id = `q${qCount}`;
@@ -542,16 +593,13 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     setter(p => { if (idx === p.length - 1) return p; const n = [...p]; [n[idx], n[idx + 1]] = [n[idx + 1], n[idx]]; return n; });
   }
 
-  // ── Styles ─────────────────────────────────────────────────────────────────
-
-  // ── Backup / restore ─────────────────────────────────────────────────────
   function exportBackup() {
     const data = { simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexThreshold, exportedAt: new Date().toISOString() };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `athena-queue-backup-${new Date().toISOString().slice(0,10)}.json`;
+    a.download = `athena-queue-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -571,7 +619,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
         if (data.overtimePool !== undefined) setOvertimePool(data.overtimePool);
         if (data.complexThreshold !== undefined) setComplexThreshold(data.complexThreshold);
         alert('Queue restored successfully from backup.');
-      } catch { alert('Could not read backup file — make sure it is a valid Athena queue backup.'); }
+      } catch { alert('Could not read backup file.'); }
     };
     reader.readAsText(file);
     e.target.value = '';
@@ -584,13 +632,12 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   const btn = { padding: '8px 16px', border: '0.5px solid #999', borderRadius: 4, background: '#fff', fontFamily: 'Georgia,serif', fontSize: 13, cursor: 'pointer' };
   const lbl = { fontSize: 11, color: '#888', display: 'block', marginBottom: 3 };
 
-  if (!authed) return <QueueLogin onAuth={() => { sessionStorage.setItem('queueAuthed','1'); setAuthed(true); }} />;
+  if (!authed) return <QueueLogin onAuth={() => { sessionStorage.setItem('queueAuthed', '1'); setAuthed(true); }} />;
   if (loading) return <div style={{ fontFamily: 'Georgia,serif', textAlign: 'center', padding: '3rem', color: '#aaa' }}>Loading queue…</div>;
 
   return (
     <div style={C}>
       <div style={{ maxWidth: 960, margin: '0 auto', padding: '1.5rem 1rem 4rem' }}>
-
         <div style={{ textAlign: 'center', borderBottom: '1px solid #ccc', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
           <div style={{ fontSize: 20, fontWeight: 'normal', letterSpacing: '0.06em' }}>ATHENA</div>
           <div style={{ fontSize: 9, color: '#888', fontStyle: 'italic', marginTop: 3 }}>Lead Time Queue</div>
@@ -609,7 +656,6 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
           </div>
         </div>
 
-        {/* Lead time summary cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: '1rem' }}>
           {[
             ['Simple', (simpleLead !== null && !isNaN(simpleLead)) ? `${simpleLead}w` : '—', '#1D9E75', `${simpleOrders.length} order${simpleOrders.length !== 1 ? 's' : ''}`],
@@ -624,7 +670,6 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
           ))}
         </div>
 
-        {/* Team capacity — self-contained, independent from Plan */}
         <div style={card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <div style={H}>Queue team</div>
@@ -638,41 +683,40 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
               return (
                 <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', border: `0.5px solid ${sc}33`, borderRadius: 6, background: '#fafaf8', flexWrap: 'wrap' }}>
                   <Dot c={sc} s={8} />
-                  <input value={m.name} onChange={e => setQueueTeam(p => p.map((x,j)=>j===i?{...x,name:e.target.value}:x))}
+                  <input value={m.name} onChange={e => setQueueTeam(p => p.map((x, j) => j === i ? { ...x, name: e.target.value } : x))}
                     style={{ fontSize: 13, border: 'none', background: 'transparent', width: 110, fontFamily: 'Georgia,serif', outline: 'none', fontWeight: 'bold' }} />
                   <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
                     <label style={{ fontSize: 10, color: '#aaa' }}>h/d</label>
                     <input type="number" value={m.stdDay} min="0.5" max="12" step="0.5"
-                      onChange={e => setQueueTeam(p => p.map((x,j)=>j===i?{...x,stdDay:parseFloat(e.target.value)||7}:x))}
+                      onChange={e => setQueueTeam(p => p.map((x, j) => j === i ? { ...x, stdDay: parseFloat(e.target.value) || 7 } : x))}
                       style={{ width: 44, padding: '3px 4px', border: '0.5px solid #ccc', borderRadius: 3, fontFamily: 'Georgia,serif', fontSize: 14 }} />
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
                     <label style={{ fontSize: 10, color: '#aaa' }}>d/wk</label>
                     <input type="number" value={m.daysPerWeek} min="0.5" max="7" step="0.5"
-                      onChange={e => setQueueTeam(p => p.map((x,j)=>j===i?{...x,daysPerWeek:parseFloat(e.target.value)||5}:x))}
+                      onChange={e => setQueueTeam(p => p.map((x, j) => j === i ? { ...x, daysPerWeek: parseFloat(e.target.value) || 5 } : x))}
                       style={{ width: 40, padding: '3px 4px', border: '0.5px solid #ccc', borderRadius: 3, fontFamily: 'Georgia,serif', fontSize: 14 }} />
                   </div>
                   <div style={{ display: 'flex', gap: 2 }}>
-                    {['simple','complex','overhead'].map(s => (
-                      <button key={s} onClick={() => setQueueTeam(p => p.map((x,j)=>j===i?{...x,stream:s}:x))}
-                        style={{ fontSize: 9, padding: '2px 5px', borderRadius: 3, border: `1px solid ${m.stream===s?streamColors[s]:streamColors[s]+'33'}`, background: m.stream===s?streamColors[s]:'transparent', color: m.stream===s?'#fff':streamColors[s]+'99', cursor: 'pointer', fontFamily: 'Georgia,serif' }}>
-                        {s==='overhead'?'Pool':s.charAt(0).toUpperCase()+s.slice(1)}
+                    {['simple', 'complex', 'overhead'].map(s => (
+                      <button key={s} onClick={() => setQueueTeam(p => p.map((x, j) => j === i ? { ...x, stream: s } : x))}
+                        style={{ fontSize: 9, padding: '2px 5px', borderRadius: 3, border: `1px solid ${m.stream === s ? streamColors[s] : streamColors[s] + '33'}`, background: m.stream === s ? streamColors[s] : 'transparent', color: m.stream === s ? '#fff' : streamColors[s] + '99', cursor: 'pointer', fontFamily: 'Georgia,serif' }}>
+                        {s === 'overhead' ? 'Pool' : s.charAt(0).toUpperCase() + s.slice(1)}
                       </button>
                     ))}
                   </div>
-                  <button onClick={() => setQueueTeam(p => p.filter((_,j)=>j!==i))}
+                  <button onClick={() => setQueueTeam(p => p.filter((_, j) => j !== i))}
                     style={{ ...btn, padding: '2px 6px', fontSize: 11, color: '#b91c1c', borderColor: '#fca5a5', marginLeft: 'auto' }}>×</button>
                 </div>
               );
             })}
           </div>
           <div style={{ fontSize: 11, color: '#aaa', marginTop: 8 }}>
-            Holiday estimated by statutory accrual · Simple: <strong style={{color:'#1D9E75'}}>{queueTeam.filter(m=>m.stream==='simple').map(m=>m.name).join(', ')||'—'}</strong>
-            &nbsp;· Complex: <strong style={{color:'#7F77DD'}}>{queueTeam.filter(m=>m.stream==='complex').map(m=>m.name).join(', ')||'—'}</strong>
+            Holiday estimated by statutory accrual · Simple: <strong style={{ color: '#1D9E75' }}>{queueTeam.filter(m => m.stream === 'simple').map(m => m.name).join(', ') || '—'}</strong>
+            &nbsp;· Complex: <strong style={{ color: '#7F77DD' }}>{queueTeam.filter(m => m.stream === 'complex').map(m => m.name).join(', ') || '—'}</strong>
           </div>
         </div>
 
-        {/* Calendar */}
         <div style={card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <div style={H}>Working calendar</div>
@@ -683,12 +727,11 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
               <button onClick={() => ensureMonths(calendarMonths.length + 6)} style={{ ...btn, padding: '4px 12px', fontSize: 12 }}>+ 6 months</button>
             </div>
           </div>
-
           {!expandedMonths ? (
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {sortedMonths().map(m => {
                 const cap = getMonthStreamMins('simple', m) + getMonthStreamMins('complex', m);
-                const ww = m.workingWeeks !== undefined ? parseFloat(m.workingWeeks) : (m.workingDays !== undefined ? parseInt(m.workingDays)/5 : 4.2);
+                const ww = m.workingWeeks !== undefined ? parseFloat(m.workingWeeks) : (m.workingDays !== undefined ? parseInt(m.workingDays) / 5 : 4.2);
                 return (
                   <div key={m.label} style={{ background: '#f5f4f0', borderRadius: 4, padding: '5px 10px', fontSize: 11, textAlign: 'center', minWidth: 80 }}>
                     <div style={{ color: '#555', whiteSpace: 'nowrap', marginBottom: 2 }}>{m.label}</div>
@@ -710,29 +753,23 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
                       <label style={{ fontSize: 11, color: '#888', whiteSpace: 'nowrap' }}>Working days:</label>
-                      <input type="number"
-                        value={m.workingDays !== undefined ? m.workingDays : 21}
-                        min="0" max="31" step="1"
+                      <input type="number" value={m.workingDays !== undefined ? m.workingDays : 21} min="0" max="31" step="1"
                         style={{ width: 52, padding: '3px 6px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', fontSize: 16 }}
                         onChange={e => setCalendarMonths(p => p.map(x => x.label === m.label ? { ...x, workingDays: parseInt(e.target.value) || 0 } : x))} />
                       <label style={{ fontSize: 11, color: '#888', whiteSpace: 'nowrap', marginLeft: 4 }}>Working weeks:</label>
-                      <input type="number"
-                        value={m.workingWeeks !== undefined ? m.workingWeeks : 4.2}
-                        min="0" max="6" step="0.1"
+                      <input type="number" value={m.workingWeeks !== undefined ? m.workingWeeks : 4.2} min="0" max="6" step="0.1"
                         style={{ width: 52, padding: '3px 6px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', fontSize: 16 }}
                         onChange={e => setCalendarMonths(p => p.map(x => x.label === m.label ? { ...x, workingWeeks: parseFloat(e.target.value) || 0 } : x))} />
-                      <button
-                        onClick={() => setCalendarMonths(p => p.map(x => {
-                          if (x.label !== m.label) return x;
-                          const newDays = Math.max(0, (parseInt(x.workingDays) || 0) - 1);
-                          const newWw = Math.max(0, Math.round(((x.workingWeeks !== undefined ? parseFloat(x.workingWeeks) : 4.2) - 0.2) * 10) / 10);
-                          return { ...x, workingDays: newDays, workingWeeks: newWw };
-                        }))}
-                        style={{ padding: '4px 10px', border: '0.5px solid #ddd', borderRadius: 4, background: '#f5f4f0', fontFamily: 'Georgia,serif', fontSize: 13, cursor: 'pointer', color: '#555' }}>
+                      <button onClick={() => setCalendarMonths(p => p.map(x => {
+                        if (x.label !== m.label) return x;
+                        const newDays = Math.max(0, (parseInt(x.workingDays) || 0) - 1);
+                        const newWw = Math.max(0, Math.round(((x.workingWeeks !== undefined ? parseFloat(x.workingWeeks) : 4.2) - 0.2) * 10) / 10);
+                        return { ...x, workingDays: newDays, workingWeeks: newWw };
+                      }))} style={{ padding: '4px 10px', border: '0.5px solid #ddd', borderRadius: 4, background: '#f5f4f0', fontFamily: 'Georgia,serif', fontSize: 13, cursor: 'pointer', color: '#555' }}>
                         − 1 day
                       </button>
                     </div>
-                    {(()=>{
+                    {(() => {
                       const wd2 = m.workingDays !== undefined ? parseInt(m.workingDays) : 21;
                       let totalAccrual = 0;
                       queueTeam.forEach(tm => {
@@ -756,7 +793,6 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
           )}
         </div>
 
-        {/* Queue settings */}
         <div style={{ background: '#fff', border: '0.5px solid #ddd', borderRadius: 8, padding: '0.85rem 1rem', marginBottom: '1rem' }}>
           <div style={{ fontSize: 9, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.07em', color: '#888', marginBottom: 10 }}>Queue settings</div>
           <div style={{ fontSize: 11, color: '#aaa', marginBottom: 10 }}>Simple and complex streams run independently. Overhead is deducted proportionally from each stream's capacity.</div>
@@ -783,24 +819,20 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
               <div style={{ fontSize: 10, color: '#aaa', marginTop: 3 }}>Under {complexThreshold}h = simple · {complexThreshold}h+ = complex</div>
             </div>
           </div>
-
         </div>
 
-        {/* Simple stream */}
         <StreamSection title="Simple builds" color="#1D9E75" stream="simple"
           orders={simpleOrders} scheduled={scheduledSimple} lead={simpleLead}
           addingTo={addingTo} setAddingTo={setAddingTo}
           onAdd={addOrder} onMoveUp={moveUp} onMoveDown={moveDown}
-          onComplete={removeOrder} onRemove={removeOrder} onUpdate={updateOrder} complexThreshold={complexThreshold}/>
+          onComplete={removeOrder} onRemove={removeOrder} onUpdate={updateOrder} complexThreshold={complexThreshold} />
 
-        {/* Complex stream */}
         <StreamSection title="Complex builds" color="#7F77DD" stream="complex"
           orders={complexOrders} scheduled={scheduledComplex} lead={complexLead}
           addingTo={addingTo} setAddingTo={setAddingTo}
           onAdd={addOrder} onMoveUp={moveUp} onMoveDown={moveDown}
-          onComplete={removeOrder} onRemove={removeOrder} onUpdate={updateOrder} complexThreshold={complexThreshold}/>
+          onComplete={removeOrder} onRemove={removeOrder} onUpdate={updateOrder} complexThreshold={complexThreshold} />
 
-        {/* Finance overtime */}
         <div style={{ background: '#fff', border: '0.5px solid #ddd', borderRadius: 8, marginBottom: '1rem', borderTop: '3px solid #BA7517', overflow: 'hidden' }}>
           <div style={{ padding: '0.85rem 1rem', borderBottom: '0.5px solid #eee' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
@@ -841,7 +873,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
             {addingTo === 'finance' && (
               <AddOrderForm stream="finance" color="#BA7517"
                 onAdd={order => addOrder('finance', order)}
-                onCancel={() => setAddingTo(null)} complexThreshold={complexThreshold}/>
+                onCancel={() => setAddingTo(null)} complexThreshold={complexThreshold} />
             )}
           </div>
         </div>

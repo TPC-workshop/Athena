@@ -6,6 +6,7 @@ const API_PASSWORD = 'Ath3na-W0rk5h0p!';
 
 // ── Portal helpers ────────────────────────────────────────────────────────────
 const PORTAL_STAGES = [
+  { value: 'booked',    label: 'Booked'      },
   { value: 'preparing', label: 'Preparing'   },
   { value: 'building',  label: 'In build'    },
   { value: 'finishing', label: 'Finishing'   },

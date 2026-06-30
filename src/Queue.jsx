@@ -65,11 +65,25 @@ const PortalPanel = memo(function PortalPanel({ order, onUpdate }) {
       <div style={ps.row}>
         <span style={{ fontSize: 11, color: '#888' }}>Stage:</span>
         <select style={ps.select} value={order.portalStage || 'confirmed'}
-          onChange={e => onUpdate(order.id, { portalStage: e.target.value })}>
+          onChange={e => onUpdate(order.id, { portalStage: e.target.value, portalStageUpdated: new Date().toISOString() })}>
           {PORTAL_STAGES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
         <span style={{ fontSize: 11, color: '#aaa', marginLeft: 4, fontStyle: 'italic' }}>Progress % is automatic</span>
       </div>
+
+      {/* Last updated indicator */}
+      {order.portalStageUpdated && (()=>{
+        const d = new Date(order.portalStageUpdated)
+        const days = Math.floor((new Date() - d) / (1000*60*60*24))
+        const label = days === 0 ? 'Updated today' : days === 1 ? 'Updated yesterday' : `Updated ${days} days ago`
+        const stale = days >= 7
+        return (
+          <div style={{ fontSize: 10, color: stale ? '#b91c1c' : '#aaa', marginBottom: 6, fontStyle: 'italic',
+            ...(stale ? { fontWeight: 'bold' } : {}) }}>
+            {stale ? '⚠ ' : ''}{label} — {d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+          </div>
+        )
+      })()}
 
       {/* Pet name + Colour */}
       <div style={ps.row}>

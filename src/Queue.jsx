@@ -533,6 +533,9 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   ]);
   const [mgmtOverhead, setMgmtOverhead] = useState(20);
   const [wsOverhead, setWsOverhead] = useState(28);
+  const [showOverheadReset, setShowOverheadReset] = useState(false);
+  const [mgmtOverheadInput, setMgmtOverheadInput] = useState('20');
+  const [wsOverheadInput, setWsOverheadInput] = useState('28');
 
   useEffect(() => {
     if (!authed) return;
@@ -923,8 +926,43 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
 
         {/* Queue settings — unchanged */}
         <div style={{ background: '#fff', border: '0.5px solid #ddd', borderRadius: 8, padding: '0.85rem 1rem', marginBottom: '1rem' }}>
-          <div style={{ fontSize: 9, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.07em', color: '#888', marginBottom: 10 }}>Queue settings</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div style={{ fontSize: 9, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.07em', color: '#888' }}>Queue settings</div>
+            <button onClick={() => { setMgmtOverheadInput(String(mgmtOverhead)); setWsOverheadInput(String(wsOverhead)); setShowOverheadReset(true); }}
+              style={{ ...btn, padding: '4px 12px', fontSize: 11, color: '#92400e', borderColor: '#fcd34d', background: '#fffbeb' }}>
+              ↻ Reset for new month
+            </button>
+          </div>
           <div style={{ fontSize: 11, color: '#aaa', marginBottom: 10 }}>Simple and complex streams run independently. Overhead is deducted proportionally from each stream's capacity.</div>
+
+          {showOverheadReset && (
+            <div style={{ background: '#fffbeb', border: '0.5px solid #fde68a', borderRadius: 6, padding: '0.75rem', marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: '#92400e', marginBottom: 8, fontWeight: 'bold' }}>Re-enter overhead hours for this month</div>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                <div>
+                  <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 3 }}>Management (hrs)</label>
+                  <input type="number" value={mgmtOverheadInput} min="0" step="0.5"
+                    style={{ width: 90, padding: '6px 8px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', fontSize: 16 }}
+                    onChange={e => setMgmtOverheadInput(e.target.value)} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 3 }}>Workshop (hrs)</label>
+                  <input type="number" value={wsOverheadInput} min="0" step="0.5"
+                    style={{ width: 90, padding: '6px 8px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', fontSize: 16 }}
+                    onChange={e => setWsOverheadInput(e.target.value)} />
+                </div>
+                <button onClick={() => {
+                  setMgmtOverhead(parseFloat(mgmtOverheadInput) || 0);
+                  setWsOverhead(parseFloat(wsOverheadInput) || 0);
+                  setShowOverheadReset(false);
+                }} style={{ ...btn, padding: '7px 16px', fontSize: 12, background: '#1a1a1a', color: '#fff', border: 'none' }}>
+                  Apply
+                </button>
+                <button onClick={() => setShowOverheadReset(false)} style={{ ...btn, padding: '7px 16px', fontSize: 12 }}>Cancel</button>
+              </div>
+            </div>
+          )}
+
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 16 }}>
             <div>
               <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 3 }}>Management overhead (hrs/month)</label>

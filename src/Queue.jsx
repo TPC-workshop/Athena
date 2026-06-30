@@ -81,6 +81,31 @@ function recommendStage(order, projectedMonth, usedFrac) {
   return { stage, reason }
 }
 
+function RecSuggestion({ rec, order, onUpdate }) {
+  if (!rec) return null
+  const currentStage = order.portalStage || 'confirmed'
+  const isCurrent = rec.stage === currentStage
+  return (
+    <div style={{ fontSize: 10, padding: '5px 8px', borderRadius: 4, marginBottom: 6,
+      background: isCurrent ? '#f0fdf4' : '#fff8ed',
+      border: '0.5px solid ' + (isCurrent ? '#bbf7d0' : '#fcd34d'),
+      color: isCurrent ? '#166534' : '#92400e',
+      display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+      <span>
+        {isCurrent ? '✓ Stage looks right' : ('💡 Suggested: ' + (PORTAL_STAGES.find(function(s){return s.value===rec.stage}) || {label:rec.stage}).label)}
+        {' — ' + rec.reason}
+      </span>
+      {!isCurrent && (
+        <button onClick={function(){ onUpdate(order.id, { portalStage: rec.stage, portalStageUpdated: new Date().toISOString() }) }}
+          style={{ fontSize: 10, padding: '2px 8px', border: '0.5px solid #d97706', borderRadius: 3,
+            background: '#fff', color: '#92400e', cursor: 'pointer', fontFamily: 'Georgia,serif', flexShrink: 0 }}>
+          Apply
+        </button>
+      )}
+    </div>
+  )
+}
+
 const PortalPanel = memo(function PortalPanel({ order, onUpdate, projectedMonth, usedFrac }) {
   const [copied, setCopied] = useState(false)
   const rec = recommendStage(order, projectedMonth, usedFrac)
@@ -124,26 +149,7 @@ const PortalPanel = memo(function PortalPanel({ order, onUpdate, projectedMonth,
         </select>
         <span style={{ fontSize: 11, color: '#aaa', marginLeft: 4, fontStyle: 'italic' }}>Progress % is automatic</span>
       </div>
-      {rec && (()=>{
-        const currentStage = order.portalStage || 'confirmed'
-        const isCurrent = rec.stage === currentStage
-        return (
-          <div style={{ fontSize: 10, padding: '4px 8px', borderRadius: 4, marginBottom: 6,
-            background: isCurrent ? '#f0fdf4' : '#fff8ed',
-            border: `0.5px solid ${isCurrent ? '#bbf7d0' : '#fcd34d'}`,
-            color: isCurrent ? '#166534' : '#92400e' }}>
-            {isCurrent ? '✓ Stage looks right' : `💡 Suggested: ${PORTAL_STAGES.find(s=>s.value===rec.stage)?.label || rec.stage}`}
-            {' '}— {rec.reason}
-            {!isCurrent && (
-              <button onClick={() => onUpdate(order.id, { portalStage: rec.stage, portalStageUpdated: new Date().toISOString() })}
-                style={{ marginLeft: 8, fontSize: 10, padding: '1px 7px', border: '0.5px solid #d97706', borderRadius: 3,
-                  background: '#fff', color: '#92400e', cursor: 'pointer', fontFamily: 'Georgia,serif' }}>
-                Apply
-              </button>
-            )}
-          </div>
-        )
-      })()}
+      <RecSuggestion rec={rec} order={order} onUpdate={onUpdate} />
 
       {/* Last updated indicator */}
       {order.portalStageUpdated && (()=>{

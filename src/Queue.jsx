@@ -28,8 +28,62 @@ function generateToken() {
 }
 
 // ── Portal panel — shown inside each order card ───────────────────────────────
-const PortalPanel = memo(function PortalPanel({ order, onUpdate }) {
+// ── Stage recommendation based on days waited + total lead time ──────────────
+function recommendStage(order, projectedMonth, usedFrac) {
+  // Calculate days waited
+  if (!order.orderDate) return null
+  const ordered = new Date(order.orderDate)
+  const daysWaited = Math.round((new Date() - ordered) / (1000*60*60*24))
+  if (daysWaited < 0) return null
+
+  // Calculate total weeks to completion (same logic as OrderCard)
+  let totalWeeks = null
+  if (projectedMonth) {
+    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December']
+    const parts = projectedMonth.split(' ')
+    const mIdx = monthNames.indexOf(parts[0])
+    const yr = parseInt(parts[1])
+    if (!isNaN(mIdx) && !isNaN(yr)) {
+      const frac = usedFrac || 0.5
+      const daysInMonth = new Date(yr, mIdx + 1, 0).getDate()
+      const completionDay = Math.max(1, Math.round(frac * daysInMonth))
+      const completionDate = new Date(yr, mIdx, completionDay)
+      totalWeeks = Math.round((completionDate - ordered) / (1000*60*60*24*7))
+    }
+  }
+
+  // If no total weeks, fall back to days-only heuristic
+  if (!totalWeeks || totalWeeks <= 0) {
+    if (daysWaited <= 7)  return { stage: 'confirmed', reason: `${daysWaited}d waited — week 1` }
+    if (daysWaited <= 14) return { stage: 'materials', reason: `${daysWaited}d waited — week 2` }
+    if (daysWaited <= 35) return { stage: 'nurture1',  reason: `${daysWaited}d waited — weeks 3–5` }
+    if (daysWaited <= 56) return { stage: 'nurture2',  reason: `${daysWaited}d waited — weeks 6–8` }
+    if (daysWaited <= 70) return { stage: 'nurture3',  reason: `${daysWaited}d waited — weeks 9–10` }
+    return { stage: 'building', reason: `${daysWaited}d waited — week 11+` }
+  }
+
+  // Use proportion of lead time elapsed
+  const weeksWaited = daysWaited / 7
+  const pct = weeksWaited / totalWeeks
+
+  let stage, reason
+  if (pct < 0.08)       { stage = 'confirmed'; reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  else if (pct < 0.15)  { stage = 'materials'; reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  else if (pct < 0.38)  { stage = 'nurture1';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  else if (pct < 0.55)  { stage = 'nurture2';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  else if (pct < 0.68)  { stage = 'nurture3';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  else if (pct < 0.78)  { stage = 'building';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  else if (pct < 0.88)  { stage = 'painting';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  else if (pct < 0.94)  { stage = 'finishing'; reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  else if (pct < 0.98)  { stage = 'invoice';   reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  else                  { stage = 'delivery';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+
+  return { stage, reason }
+}
+
+const PortalPanel = memo(function PortalPanel({ order, onUpdate, projectedMonth, usedFrac }) {
   const [copied, setCopied] = useState(false)
+  const rec = recommendStage(order, projectedMonth, usedFrac)
   const token = order.portalToken || ''
   const portalUrl = token ? `https://order.thepetcarpenter.co.uk/${token}` : ''
 
@@ -70,6 +124,26 @@ const PortalPanel = memo(function PortalPanel({ order, onUpdate }) {
         </select>
         <span style={{ fontSize: 11, color: '#aaa', marginLeft: 4, fontStyle: 'italic' }}>Progress % is automatic</span>
       </div>
+      {rec && (()=>{
+        const currentStage = order.portalStage || 'confirmed'
+        const isCurrent = rec.stage === currentStage
+        return (
+          <div style={{ fontSize: 10, padding: '4px 8px', borderRadius: 4, marginBottom: 6,
+            background: isCurrent ? '#f0fdf4' : '#fff8ed',
+            border: `0.5px solid ${isCurrent ? '#bbf7d0' : '#fcd34d'}`,
+            color: isCurrent ? '#166534' : '#92400e' }}>
+            {isCurrent ? '✓ Stage looks right' : `💡 Suggested: ${PORTAL_STAGES.find(s=>s.value===rec.stage)?.label || rec.stage}`}
+            {' '}— {rec.reason}
+            {!isCurrent && (
+              <button onClick={() => onUpdate(order.id, { portalStage: rec.stage, portalStageUpdated: new Date().toISOString() })}
+                style={{ marginLeft: 8, fontSize: 10, padding: '1px 7px', border: '0.5px solid #d97706', borderRadius: 3,
+                  background: '#fff', color: '#92400e', cursor: 'pointer', fontFamily: 'Georgia,serif' }}>
+                Apply
+              </button>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Last updated indicator */}
       {order.portalStageUpdated && (()=>{
@@ -369,7 +443,7 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
 
       {/* Portal panel — collapsible */}
       {showPortal && (
-        <PortalPanel order={order} onUpdate={onUpdate} />
+        <PortalPanel order={order} onUpdate={onUpdate} projectedMonth={projectedMonth} usedFrac={usedFrac} />
       )}
     </div>
   );

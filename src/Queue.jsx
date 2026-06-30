@@ -226,6 +226,22 @@ async function apiLoadPlan() {
   if (!r.ok) throw new Error('Plan load failed');
   return r.json();
 }
+async function apiSavePlanOverhead(mgmt, ws) {
+  // Fetch current full plan state, merge in just the overhead fields, save back
+  // This avoids wiping out clients/tasks/team data stored in the same object
+  try {
+    const current = await apiLoadPlan();
+    const merged = { ...current, mgmtOverheadBudget: mgmt, wsOverheadBudget: ws };
+    await fetch('/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-athena-password': API_PASSWORD },
+      body: JSON.stringify(merged),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
 async function apiLoadQueue() {
   const r = await fetch('/api/queue-state', { headers: { 'x-athena-password': API_PASSWORD } });
   if (!r.ok) return {};
@@ -534,8 +550,9 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   const [mgmtOverhead, setMgmtOverhead] = useState(20);
   const [wsOverhead, setWsOverhead] = useState(28);
   const [showOverheadReset, setShowOverheadReset] = useState(false);
-  const [mgmtOverheadInput, setMgmtOverheadInput] = useState('20');
-  const [wsOverheadInput, setWsOverheadInput] = useState('28');
+  const [mgmtOverheadInput, setMgmtOverheadInput] = useState('');
+  const [wsOverheadInput, setWsOverheadInput] = useState('');
+  const [syncMsg, setSyncMsg] = useState('');
 
   useEffect(() => {
     if (!authed) return;
@@ -928,7 +945,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
         <div style={{ background: '#fff', border: '0.5px solid #ddd', borderRadius: 8, padding: '0.85rem 1rem', marginBottom: '1rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <div style={{ fontSize: 9, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.07em', color: '#888' }}>Queue settings</div>
-            <button onClick={() => { setMgmtOverheadInput(String(mgmtOverhead)); setWsOverheadInput(String(wsOverhead)); setShowOverheadReset(true); }}
+            <button onClick={() => { setMgmtOverheadInput(''); setWsOverheadInput(''); setShowOverheadReset(true); setSyncMsg(''); }}
               style={{ ...btn, padding: '4px 12px', fontSize: 11, color: '#92400e', borderColor: '#fcd34d', background: '#fffbeb' }}>
               ↻ Reset for new month
             </button>
@@ -951,15 +968,22 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
                     style={{ width: 90, padding: '6px 8px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', fontSize: 16 }}
                     onChange={e => setWsOverheadInput(e.target.value)} />
                 </div>
-                <button onClick={() => {
-                  setMgmtOverhead(parseFloat(mgmtOverheadInput) || 0);
-                  setWsOverhead(parseFloat(wsOverheadInput) || 0);
+                <button onClick={async () => {
+                  const m = parseFloat(mgmtOverheadInput) || 0;
+                  const w = parseFloat(wsOverheadInput) || 0;
+                  setMgmtOverhead(m);
+                  setWsOverhead(w);
                   setShowOverheadReset(false);
+                  setSyncMsg('Syncing to Plan…');
+                  const ok = await apiSavePlanOverhead(m, w);
+                  setSyncMsg(ok ? '✓ Synced to Plan' : '⚠ Could not sync to Plan — update manually');
+                  setTimeout(() => setSyncMsg(''), 4000);
                 }} style={{ ...btn, padding: '7px 16px', fontSize: 12, background: '#1a1a1a', color: '#fff', border: 'none' }}>
-                  Apply
+                  Apply &amp; sync to Plan
                 </button>
                 <button onClick={() => setShowOverheadReset(false)} style={{ ...btn, padding: '7px 16px', fontSize: 12 }}>Cancel</button>
               </div>
+              {syncMsg && <div style={{ fontSize: 11, color: syncMsg.startsWith('✓') ? '#166534' : syncMsg.startsWith('⚠') ? '#b91c1c' : '#888', marginTop: 6 }}>{syncMsg}</div>}
             </div>
           )}
 

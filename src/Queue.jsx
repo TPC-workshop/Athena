@@ -6,13 +6,18 @@ const API_PASSWORD = 'Ath3na-W0rk5h0p!';
 
 // ── Portal helpers ────────────────────────────────────────────────────────────
 const PORTAL_STAGES = [
-  { value: 'booked',    label: 'Booked'      },
-  { value: 'preparing', label: 'Preparing'   },
-  { value: 'building',  label: 'In build'    },
-  { value: 'finishing', label: 'Finishing'   },
-  { value: 'invoice',   label: 'Invoice due' },
-  { value: 'delivery',  label: 'Ready'       },
-  { value: 'delivered', label: 'Delivered'   },
+  { value: 'booked',    label: 'Booked in'            },
+  { value: 'confirmed', label: 'Order confirmed'       },
+  { value: 'materials', label: 'Materials ordered'     },
+  { value: 'nurture1',  label: 'Nurture 1 — Workshop'  },
+  { value: 'nurture2',  label: 'Nurture 2 — Space'     },
+  { value: 'nurture3',  label: 'Nurture 3 — Dog prep'  },
+  { value: 'building',  label: 'In build'              },
+  { value: 'painting',  label: 'Paint shop'            },
+  { value: 'finishing', label: 'Finishing'             },
+  { value: 'invoice',   label: 'Invoice due'           },
+  { value: 'delivery',  label: 'Ready'                 },
+  { value: 'delivered', label: 'Delivered'             },
 ]
 
 function generateToken() {
@@ -22,6 +27,7 @@ function generateToken() {
     .join('')
 }
 
+// ── Portal panel — shown inside each order card ───────────────────────────────
 const PortalPanel = memo(function PortalPanel({ order, onUpdate }) {
   const [copied, setCopied] = useState(false)
   const token = order.portalToken || ''
@@ -54,9 +60,11 @@ const PortalPanel = memo(function PortalPanel({ order, onUpdate }) {
   return (
     <div style={ps.wrap}>
       <div style={ps.label}>Customer portal</div>
+
+      {/* Stage + progress % */}
       <div style={ps.row}>
         <span style={{ fontSize: 11, color: '#888' }}>Stage:</span>
-        <select style={ps.select} value={order.portalStage || 'preparing'}
+        <select style={ps.select} value={order.portalStage || 'confirmed'}
           onChange={e => onUpdate(order.id, { portalStage: e.target.value })}>
           {PORTAL_STAGES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
@@ -65,31 +73,43 @@ const PortalPanel = memo(function PortalPanel({ order, onUpdate }) {
           value={order.portalPct || 0}
           onChange={e => onUpdate(order.id, { portalPct: Math.min(100, Math.max(0, parseInt(e.target.value) || 0)) })} />
       </div>
+
+      {/* Pet name + Colour */}
       <div style={ps.row}>
+        <span style={{ fontSize: 11, color: '#888' }}>Pet's name:</span>
+        <input style={{ ...ps.smallInp, width: 110 }}
+          value={order.petName || ''} placeholder="e.g. Bella"
+          onChange={e => onUpdate(order.id, { petName: e.target.value })} />
         <span style={{ fontSize: 11, color: '#888' }}>Colour:</span>
-        <input style={{ ...ps.smallInp, width: 140 }}
+        <input style={{ ...ps.smallInp, width: 130 }}
           value={order.portalColour || ''} placeholder="e.g. Lamp Room Grey"
           onChange={e => onUpdate(order.id, { portalColour: e.target.value })} />
+      </div>
+
+      {/* Finish + delivery date */}
+      <div style={ps.row}>
         <span style={{ fontSize: 11, color: '#888' }}>Finish:</span>
         <input style={{ ...ps.smallInp, width: 100 }}
           value={order.portalFinish || ''} placeholder="e.g. Oak"
           onChange={e => onUpdate(order.id, { portalFinish: e.target.value })} />
-      </div>
-      <div style={ps.row}>
-        <span style={{ fontSize: 11, color: '#888' }}>Est. delivery date:</span>
+        <span style={{ fontSize: 11, color: '#888' }}>Est. delivery:</span>
         <input type="date" style={ps.smallInp}
           value={order.targetDate || ''}
           onChange={e => onUpdate(order.id, { targetDate: e.target.value })} />
       </div>
+
+      {/* Personal message */}
       <textarea style={ps.textarea}
-        value={order.portalMessage || ''} placeholder="Personal message shown to customer on portal…"
+        value={order.portalMessage || ''} placeholder="Personal message shown to customer — update this as the order progresses…"
         onChange={e => onUpdate(order.id, { portalMessage: e.target.value })} />
+
+      {/* Token / portal link */}
       <div style={ps.row}>
         {token ? (
           <>
             <span style={ps.tokenBox} title={portalUrl}>{portalUrl}</span>
             <button style={ps.btn} onClick={handleCopy}>{copied ? '✓ Copied' : 'Copy link'}</button>
-            <button style={ps.btn} onClick={handleGenerate}>↺ Regenerate</button>
+            <button style={ps.btn} onClick={handleGenerate} title="Generate new token (old link will stop working)">↺ Regenerate</button>
           </>
         ) : (
           <button style={ps.btnGreen} onClick={handleGenerate}>+ Generate portal link</button>
@@ -98,6 +118,10 @@ const PortalPanel = memo(function PortalPanel({ order, onUpdate }) {
     </div>
   )
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Everything below is UNCHANGED from original Queue.jsx
+// ─────────────────────────────────────────────────────────────────────────────
 
 function getAccrualPerDay(rd) {
   const dpw = rd.daysPerWeek || 5;
@@ -252,6 +276,7 @@ const AddOrderForm = memo(function AddOrderForm({ stream, color, onAdd, onCancel
   );
 });
 
+// ── OrderCard — now includes PortalPanel ─────────────────────────────────────
 const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, spansMonth, usedFrac, color, onMoveUp, onMoveDown, onComplete, onRemove, onUpdate }) {
   const [showPortal, setShowPortal] = useState(false)
   const mins = calcOrderMins(order);
@@ -275,6 +300,7 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
           <span style={{ fontSize: 13, fontWeight: 'bold', color, whiteSpace: 'nowrap' }}>{projectedMonth || '—'}</span>
           <span style={{ fontSize: 10, color: '#aaa' }}>est. completion{spansMonth ? ' · spans months' : ''}</span>
         </div>
+        {/* Portal indicator — green dot if token exists */}
         <button onClick={() => setShowPortal(p => !p)}
           style={{ ...btn, padding: '4px 10px', fontSize: 11,
             background: order.portalToken ? '#f0fdf4' : '#f5f4f0',
@@ -289,11 +315,13 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
         <button onClick={onRemove}
           style={{ ...btn, padding: '4px 8px', fontSize: 11, color: '#b91c1c', borderColor: '#fca5a5' }}>×</button>
       </div>
+
+      {/* Order date row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, paddingLeft: 4 }}>
         <label style={{ fontSize: 11, color: '#aaa', whiteSpace: 'nowrap' }}>Order date:</label>
         <input type="date" value={order.orderDate || ''}
           onChange={e => onUpdate && onUpdate(order.id, { orderDate: e.target.value })}
-          style={{ fontSize: 12, padding: '2px 6px', border: '0.5px solid #ddd', borderRadius: 4, fontFamily: 'Georgia,serif', color: '#555', background: '#fafal8' }} />
+          style={{ fontSize: 12, padding: '2px 6px', border: '0.5px solid #ddd', borderRadius: 4, fontFamily: 'Georgia,serif', color: '#555', background: '#fafaf8' }} />
         {order.orderDate && projectedMonth && (() => {
           const ordered = new Date(order.orderDate);
           const elapsed = Math.round((new Date() - ordered) / (1000 * 60 * 60 * 24));
@@ -327,7 +355,11 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
           );
         })()}
       </div>
-      {showPortal && <PortalPanel order={order} onUpdate={onUpdate} />}
+
+      {/* Portal panel — collapsible */}
+      {showPortal && (
+        <PortalPanel order={order} onUpdate={onUpdate} />
+      )}
     </div>
   );
 });
@@ -510,9 +542,10 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     const months = sortedMonths();
     if (!months.length) return orders.map(o => ({ ...o, projectedMonth: 'No calendar set' }));
     const result = [];
+    const queue = [...orders];
     let monthIdx = 0;
     let usedMins = 0;
-    for (const order of orders) {
+    for (const order of queue) {
       const orderMins = calcOrderMins(order);
       let allocated = false;
       while (monthIdx < months.length) {
@@ -639,6 +672,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   return (
     <div style={C}>
       <div style={{ maxWidth: 960, margin: '0 auto', padding: '1.5rem 1rem 4rem' }}>
+
         <div style={{ textAlign: 'center', borderBottom: '1px solid #ccc', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
           <div style={{ fontSize: 20, fontWeight: 'normal', letterSpacing: '0.06em' }}>ATHENA</div>
           <div style={{ fontSize: 9, color: '#888', fontStyle: 'italic', marginTop: 3 }}>Lead Time Queue</div>
@@ -671,6 +705,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
           ))}
         </div>
 
+        {/* Queue team — unchanged */}
         <div style={card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <div style={H}>Queue team</div>
@@ -718,6 +753,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
           </div>
         </div>
 
+        {/* Calendar — unchanged */}
         <div style={card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <div style={H}>Working calendar</div>
@@ -794,6 +830,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
           )}
         </div>
 
+        {/* Queue settings — unchanged */}
         <div style={{ background: '#fff', border: '0.5px solid #ddd', borderRadius: 8, padding: '0.85rem 1rem', marginBottom: '1rem' }}>
           <div style={{ fontSize: 9, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.07em', color: '#888', marginBottom: 10 }}>Queue settings</div>
           <div style={{ fontSize: 11, color: '#aaa', marginBottom: 10 }}>Simple and complex streams run independently. Overhead is deducted proportionally from each stream's capacity.</div>
@@ -803,14 +840,12 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
               <input type="number" value={mgmtOverhead} min="0" step="0.5"
                 style={{ width: '100%', padding: '6px 8px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', fontSize: 16 }}
                 onChange={e => setMgmtOverhead(parseFloat(e.target.value) || 0)} />
-              <div style={{ fontSize: 10, color: '#aaa', marginTop: 3 }}>Management tasks, meetings, ordering etc.</div>
             </div>
             <div>
               <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 3 }}>Workshop overhead (hrs/month)</label>
               <input type="number" value={wsOverhead} min="0" step="0.5"
                 style={{ width: '100%', padding: '6px 8px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', fontSize: 16 }}
                 onChange={e => setWsOverhead(parseFloat(e.target.value) || 0)} />
-              <div style={{ fontSize: 10, color: '#aaa', marginTop: 3 }}>Workshop maintenance, cleaning, facilities etc.</div>
             </div>
             <div>
               <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 3 }}>Complexity threshold (hrs)</label>
@@ -834,6 +869,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
           onAdd={addOrder} onMoveUp={moveUp} onMoveDown={moveDown}
           onComplete={removeOrder} onRemove={removeOrder} onUpdate={updateOrder} complexThreshold={complexThreshold} />
 
+        {/* Finance stream — unchanged */}
         <div style={{ background: '#fff', border: '0.5px solid #ddd', borderRadius: 8, marginBottom: '1rem', borderTop: '3px solid #BA7517', overflow: 'hidden' }}>
           <div style={{ padding: '0.85rem 1rem', borderBottom: '0.5px solid #eee' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>

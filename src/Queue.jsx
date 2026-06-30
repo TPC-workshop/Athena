@@ -61,17 +61,14 @@ const PortalPanel = memo(function PortalPanel({ order, onUpdate }) {
     <div style={ps.wrap}>
       <div style={ps.label}>Customer portal</div>
 
-      {/* Stage + progress % */}
+      {/* Stage */}
       <div style={ps.row}>
         <span style={{ fontSize: 11, color: '#888' }}>Stage:</span>
         <select style={ps.select} value={order.portalStage || 'confirmed'}
           onChange={e => onUpdate(order.id, { portalStage: e.target.value })}>
           {PORTAL_STAGES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
-        <span style={{ fontSize: 11, color: '#888', marginLeft: 4 }}>Progress %:</span>
-        <input type="number" min="0" max="100" style={{ ...ps.smallInp, width: 56 }}
-          value={order.portalPct || 0}
-          onChange={e => onUpdate(order.id, { portalPct: Math.min(100, Math.max(0, parseInt(e.target.value) || 0)) })} />
+        <span style={{ fontSize: 11, color: '#aaa', marginLeft: 4, fontStyle: 'italic' }}>Progress % is automatic</span>
       </div>
 
       {/* Pet name + Colour */}

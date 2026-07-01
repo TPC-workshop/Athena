@@ -259,7 +259,7 @@ function Dot({ c, s = 9 }) {
   return <span style={{ width: s, height: s, borderRadius: '50%', background: c, display: 'inline-block', flexShrink: 0 }} />;
 }
 
-function calcOrderMins(order) {
+function calcOrderMins(order, useRemaining = false) {
   if (!order.qtys) return (order.estimatedHours || 0) * 60;
   const prodTasks = genClientTasks({
     ...order,
@@ -272,7 +272,12 @@ function calcOrderMins(order) {
     const m = parseInt(b.mins) || 0;
     return b.desc && m > 0 ? a + m : a;
   }, 0);
-  return prodMins + bespokeMins;
+  const totalMins = prodMins + bespokeMins;
+  if (useRemaining) {
+    const pct = Math.min(100, Math.max(0, parseFloat(order.pctDone) || 0));
+    return totalMins * (1 - pct / 100);
+  }
+  return totalMins;
 }
 
 function QueueLogin({ onAuth }) {
@@ -401,7 +406,9 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
         <span style={{ flex: 1, fontSize: 14, fontWeight: 'bold', minWidth: 120 }}>{order.name || 'Unnamed'}</span>
         <span style={{ fontSize: 11, color: '#888', whiteSpace: 'nowrap' }}>{UNIT_TYPES.find(u => u.key === (order.unitType || 'painted'))?.label || 'Painted'}</span>
         <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, background: '#f5f4f0', color: '#555', border: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>
-          {(mins / 60).toFixed(1)}h
+          {order.pctDone > 0
+            ? `${(calcOrderMins(order, true) / 60).toFixed(1)}h left of ${(mins / 60).toFixed(1)}h`
+            : `${(mins / 60).toFixed(1)}h`}
         </span>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: 100 }}>
           <span style={{ fontSize: 13, fontWeight: 'bold', color, whiteSpace: 'nowrap' }}>{projectedMonth || '—'}</span>
@@ -423,12 +430,24 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
           style={{ ...btn, padding: '4px 8px', fontSize: 11, color: '#b91c1c', borderColor: '#fca5a5' }}>×</button>
       </div>
 
-      {/* Order date row */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, paddingLeft: 4 }}>
+      {/* Order date + % done row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, paddingLeft: 4, flexWrap: 'wrap' }}>
         <label style={{ fontSize: 11, color: '#aaa', whiteSpace: 'nowrap' }}>Order date:</label>
         <input type="date" value={order.orderDate || ''}
           onChange={e => onUpdate && onUpdate(order.id, { orderDate: e.target.value })}
           style={{ fontSize: 12, padding: '2px 6px', border: '0.5px solid #ddd', borderRadius: 4, fontFamily: 'Georgia,serif', color: '#555', background: '#fafaf8' }} />
+        <label style={{ fontSize: 11, color: '#aaa', whiteSpace: 'nowrap', marginLeft: 8 }}>% done:</label>
+        <input type="number" value={order.pctDone || 0} min="0" max="100" step="5"
+          onChange={e => onUpdate && onUpdate(order.id, { pctDone: Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)) })}
+          style={{ width: 58, fontSize: 12, padding: '2px 6px', border: '0.5px solid #ddd', borderRadius: 4, fontFamily: 'Georgia,serif', color: '#555', background: '#fafal8' }} />
+        <span style={{ fontSize: 11, color: '#aaa' }}>%</span>
+        {(order.pctDone > 0) && <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4,
+          background: order.pctDone >= 100 ? '#f0fdf4' : '#f5f4f0',
+          color: order.pctDone >= 100 ? '#166534' : '#555',
+          border: '0.5px solid ' + (order.pctDone >= 100 ? '#bbf7d0' : '#e5e7eb'),
+          whiteSpace: 'nowrap' }}>
+          {order.pctDone >= 100 ? '✓ Complete' : `${(calcOrderMins(order) * (1 - order.pctDone/100) / 60).toFixed(1)}h remaining`}
+        </span>}
         {order.orderDate && projectedMonth && (() => {
           const ordered = new Date(order.orderDate);
           const elapsed = Math.round((new Date() - ordered) / (1000 * 60 * 60 * 24));
@@ -657,7 +676,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     let monthIdx = 0;
     let usedMins = 0;
     for (const order of queue) {
-      const orderMins = calcOrderMins(order);
+      const orderMins = calcOrderMins(order, true); // use remaining hours based on % done
       let allocated = false;
       while (monthIdx < months.length) {
         const cap = getCapFn(months[monthIdx]);

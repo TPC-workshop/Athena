@@ -20,6 +20,14 @@ const PORTAL_STAGES = [
   { value: 'delivered', label: 'Delivered'             },
 ]
 
+const TOUCHPOINTS = [
+  { key: 'flowers',    label: '🌸 Flowers & treats sent'  },
+  { key: 'postcard',   label: '📬 Week 5 postcard sent'   },
+  { key: 'finishPhoto',label: '🖼 Finishing photo sent'   },
+  { key: 'dogPhoto',   label: '🐾 Dog photo received'     },
+  { key: 'gift',       label: '🎁 Personalised gift sent' },
+]
+
 function generateToken() {
   const chars = 'abcdefghijkmnpqrstuvwxyz23456789'
   return Array.from(crypto.getRandomValues(new Uint8Array(12)))
@@ -27,16 +35,13 @@ function generateToken() {
     .join('')
 }
 
-// ── Portal panel — shown inside each order card ───────────────────────────────
-// ── Stage recommendation based on days waited + total lead time ──────────────
+// ── Stage recommendation ──────────────────────────────────────────────────────
 function recommendStage(order, projectedMonth, usedFrac) {
-  // Calculate days waited
   if (!order.orderDate) return null
   const ordered = new Date(order.orderDate)
   const daysWaited = Math.round((new Date() - ordered) / (1000*60*60*24))
   if (daysWaited < 0) return null
 
-  // Calculate total weeks to completion (same logic as OrderCard)
   let totalWeeks = null
   if (projectedMonth) {
     const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December']
@@ -52,7 +57,6 @@ function recommendStage(order, projectedMonth, usedFrac) {
     }
   }
 
-  // If no total weeks, fall back to days-only heuristic
   if (!totalWeeks || totalWeeks <= 0) {
     if (daysWaited <= 7)  return { stage: 'confirmed', reason: `${daysWaited}d waited — week 1` }
     if (daysWaited <= 14) return { stage: 'materials', reason: `${daysWaited}d waited — week 2` }
@@ -62,22 +66,19 @@ function recommendStage(order, projectedMonth, usedFrac) {
     return { stage: 'building', reason: `${daysWaited}d waited — week 11+` }
   }
 
-  // Use proportion of lead time elapsed
   const weeksWaited = daysWaited / 7
   const pct = weeksWaited / totalWeeks
-
   let stage, reason
-  if (pct < 0.08)       { stage = 'confirmed'; reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
-  else if (pct < 0.15)  { stage = 'materials'; reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
-  else if (pct < 0.38)  { stage = 'nurture1';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
-  else if (pct < 0.55)  { stage = 'nurture2';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
-  else if (pct < 0.68)  { stage = 'nurture3';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
-  else if (pct < 0.78)  { stage = 'building';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
-  else if (pct < 0.88)  { stage = 'painting';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
-  else if (pct < 0.94)  { stage = 'finishing'; reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
-  else if (pct < 0.98)  { stage = 'invoice';   reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
-  else                  { stage = 'delivery';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
-
+  if (pct < 0.08)      { stage = 'confirmed'; reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  else if (pct < 0.15) { stage = 'materials'; reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  else if (pct < 0.38) { stage = 'nurture1';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  else if (pct < 0.55) { stage = 'nurture2';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  else if (pct < 0.68) { stage = 'nurture3';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  else if (pct < 0.78) { stage = 'building';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  else if (pct < 0.88) { stage = 'painting';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  else if (pct < 0.94) { stage = 'finishing'; reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  else if (pct < 0.98) { stage = 'invoice';   reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  else                 { stage = 'delivery';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
   return { stage, reason }
 }
 
@@ -106,6 +107,7 @@ function RecSuggestion({ rec, order, onUpdate }) {
   )
 }
 
+// ── Portal panel ──────────────────────────────────────────────────────────────
 const PortalPanel = memo(function PortalPanel({ order, onUpdate, projectedMonth, usedFrac }) {
   const [copied, setCopied] = useState(false)
   const rec = recommendStage(order, projectedMonth, usedFrac)
@@ -115,7 +117,6 @@ const PortalPanel = memo(function PortalPanel({ order, onUpdate, projectedMonth,
   function handleGenerate() {
     onUpdate(order.id, { portalToken: generateToken() })
   }
-
   function handleCopy() {
     if (!portalUrl) return
     navigator.clipboard.writeText(portalUrl).then(() => {
@@ -149,17 +150,17 @@ const PortalPanel = memo(function PortalPanel({ order, onUpdate, projectedMonth,
         </select>
         <span style={{ fontSize: 11, color: '#aaa', marginLeft: 4, fontStyle: 'italic' }}>Progress % is automatic</span>
       </div>
+
       <RecSuggestion rec={rec} order={order} onUpdate={onUpdate} />
 
-      {/* Last updated indicator */}
+      {/* Last updated */}
       {order.portalStageUpdated && (()=>{
         const d = new Date(order.portalStageUpdated)
         const days = Math.floor((new Date() - d) / (1000*60*60*24))
         const label = days === 0 ? 'Updated today' : days === 1 ? 'Updated yesterday' : `Updated ${days} days ago`
         const stale = days >= 7
         return (
-          <div style={{ fontSize: 10, color: stale ? '#b91c1c' : '#aaa', marginBottom: 6, fontStyle: 'italic',
-            ...(stale ? { fontWeight: 'bold' } : {}) }}>
+          <div style={{ fontSize: 10, color: stale ? '#b91c1c' : '#aaa', marginBottom: 6, fontStyle: 'italic', ...(stale ? { fontWeight: 'bold' } : {}) }}>
             {stale ? '⚠ ' : ''}{label} — {d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
           </div>
         )
@@ -189,10 +190,44 @@ const PortalPanel = memo(function PortalPanel({ order, onUpdate, projectedMonth,
           onChange={e => onUpdate(order.id, { targetDate: e.target.value })} />
       </div>
 
+      {/* Dog photo URL */}
+      <div style={ps.row}>
+        <span style={{ fontSize: 11, color: '#888' }}>🐾 Dog photo URL:</span>
+        <input style={{ ...ps.smallInp, flex: 1, minWidth: 200 }}
+          value={order.dogPhotoUrl || ''} placeholder="Paste Google Drive / Dropbox public link…"
+          onChange={e => onUpdate(order.id, { dogPhotoUrl: e.target.value })} />
+        {order.dogPhotoUrl && (
+          <img src={order.dogPhotoUrl} alt="dog"
+            style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4, border: '0.5px solid #ddd', flexShrink: 0 }}
+            onError={e => e.target.style.display = 'none'} />
+        )}
+      </div>
+
       {/* Personal message */}
       <textarea style={ps.textarea}
         value={order.portalMessage || ''} placeholder="Personal message shown to customer — update this as the order progresses…"
         onChange={e => onUpdate(order.id, { portalMessage: e.target.value })} />
+
+      {/* Physical touchpoints checklist */}
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ fontSize: 9, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.07em', color: '#888', marginBottom: 6 }}>Physical touchpoints</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {TOUCHPOINTS.map(tp => {
+            const done = !!(order.touchpoints || {})[tp.key]
+            return (
+              <button key={tp.key}
+                onClick={() => onUpdate(order.id, { touchpoints: { ...(order.touchpoints || {}), [tp.key]: !done } })}
+                style={{ fontSize: 10, padding: '3px 9px', borderRadius: 4, cursor: 'pointer', fontFamily: 'Georgia,serif',
+                  background: done ? '#f0fdf4' : '#fff',
+                  border: `0.5px solid ${done ? '#86efac' : '#ddd'}`,
+                  color: done ? '#166534' : '#888',
+                  textDecoration: done ? 'none' : 'none' }}>
+                {done ? '✓ ' : ''}{tp.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
 
       {/* Token / portal link */}
       <div style={ps.row}>
@@ -211,7 +246,7 @@ const PortalPanel = memo(function PortalPanel({ order, onUpdate, projectedMonth,
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Everything below is UNCHANGED from original Queue.jsx
+// Everything below is the live version unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 
 function getAccrualPerDay(rd) {
@@ -227,8 +262,6 @@ async function apiLoadPlan() {
   return r.json();
 }
 async function apiSavePlanOverhead(mgmt, ws) {
-  // Fetch current full plan state, merge in just the overhead fields, save back
-  // This avoids wiping out clients/tasks/team data stored in the same object
   try {
     const current = await apiLoadPlan();
     const merged = { ...current, mgmtOverheadBudget: mgmt, wsOverheadBudget: ws };
@@ -388,12 +421,16 @@ const AddOrderForm = memo(function AddOrderForm({ stream, color, onAdd, onCancel
   );
 });
 
-// ── OrderCard — now includes PortalPanel ─────────────────────────────────────
 const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, spansMonth, usedFrac, color, onMoveUp, onMoveDown, onComplete, onRemove, onUpdate }) {
   const [showPortal, setShowPortal] = useState(false)
   const mins = calcOrderMins(order);
   const bumpBtn = { padding: '3px 8px', border: '0.5px solid #ddd', borderRadius: 3, background: '#fff', fontFamily: 'Georgia,serif', fontSize: 11, cursor: 'pointer', color: '#555' };
   const btn = { padding: '8px 16px', border: '0.5px solid #999', borderRadius: 4, background: '#fff', fontFamily: 'Georgia,serif', fontSize: 13, cursor: 'pointer' };
+
+  // Touchpoint completion indicator
+  const tp = order.touchpoints || {}
+  const tpDone = TOUCHPOINTS.filter(t => tp[t.key]).length
+  const tpTotal = TOUCHPOINTS.length
 
   return (
     <div style={{ background: '#fff', border: '0.5px solid #ddd', borderRadius: 6, padding: '0.75rem 1rem', marginBottom: 8, borderLeft: `3px solid ${color}` }}>
@@ -414,13 +451,13 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
           <span style={{ fontSize: 13, fontWeight: 'bold', color, whiteSpace: 'nowrap' }}>{projectedMonth || '—'}</span>
           <span style={{ fontSize: 10, color: '#aaa' }}>est. completion{spansMonth ? ' · spans months' : ''}</span>
         </div>
-        {/* Portal indicator — green dot if token exists */}
         <button onClick={() => setShowPortal(p => !p)}
           style={{ ...btn, padding: '4px 10px', fontSize: 11,
             background: order.portalToken ? '#f0fdf4' : '#f5f4f0',
             color: order.portalToken ? '#166534' : '#888',
             borderColor: order.portalToken ? '#bbf7d0' : '#ddd' }}>
           {order.portalToken ? '🔗 Portal' : 'Portal'}
+          {order.portalToken && tpDone < tpTotal && <span style={{ marginLeft: 4, fontSize: 9, color: '#d97706' }}>{tpDone}/{tpTotal}</span>}
         </button>
         <button onClick={onComplete}
           style={{ ...btn, padding: '4px 12px', fontSize: 11, background: '#f0fdf4', color: '#166534', borderColor: '#bbf7d0' }}>
@@ -430,7 +467,6 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
           style={{ ...btn, padding: '4px 8px', fontSize: 11, color: '#b91c1c', borderColor: '#fca5a5' }}>×</button>
       </div>
 
-      {/* Order date + % done row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, paddingLeft: 4, flexWrap: 'wrap' }}>
         <label style={{ fontSize: 11, color: '#aaa', whiteSpace: 'nowrap' }}>Order date:</label>
         <input type="date" value={order.orderDate || ''}
@@ -439,7 +475,7 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
         <label style={{ fontSize: 11, color: '#aaa', whiteSpace: 'nowrap', marginLeft: 8 }}>% done:</label>
         <input type="number" value={order.pctDone || 0} min="0" max="100" step="5"
           onChange={e => onUpdate && onUpdate(order.id, { pctDone: Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)) })}
-          style={{ width: 58, fontSize: 12, padding: '2px 6px', border: '0.5px solid #ddd', borderRadius: 4, fontFamily: 'Georgia,serif', color: '#555', background: '#fafal8' }} />
+          style={{ width: 58, fontSize: 12, padding: '2px 6px', border: '0.5px solid #ddd', borderRadius: 4, fontFamily: 'Georgia,serif', color: '#555', background: '#fafaf8' }} />
         <span style={{ fontSize: 11, color: '#aaa' }}>%</span>
         {(order.pctDone > 0) && <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4,
           background: order.pctDone >= 100 ? '#f0fdf4' : '#f5f4f0',
@@ -482,7 +518,6 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
         })()}
       </div>
 
-      {/* Portal panel — collapsible */}
       {showPortal && (
         <PortalPanel order={order} onUpdate={onUpdate} projectedMonth={projectedMonth} usedFrac={usedFrac} />
       )}
@@ -676,7 +711,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     let monthIdx = 0;
     let usedMins = 0;
     for (const order of queue) {
-      const orderMins = calcOrderMins(order, true); // use remaining hours based on % done
+      const orderMins = calcOrderMins(order, true);
       let allocated = false;
       while (monthIdx < months.length) {
         const cap = getCapFn(months[monthIdx]);
@@ -835,7 +870,6 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
           ))}
         </div>
 
-        {/* Queue team — unchanged */}
         <div style={card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <div style={H}>Queue team</div>
@@ -883,7 +917,6 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
           </div>
         </div>
 
-        {/* Calendar — unchanged */}
         <div style={card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <div style={H}>Working calendar</div>
@@ -960,7 +993,6 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
           )}
         </div>
 
-        {/* Queue settings — unchanged */}
         <div style={{ background: '#fff', border: '0.5px solid #ddd', borderRadius: 8, padding: '0.85rem 1rem', marginBottom: '1rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <div style={{ fontSize: 9, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.07em', color: '#888' }}>Queue settings</div>
@@ -1041,7 +1073,6 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
           onAdd={addOrder} onMoveUp={moveUp} onMoveDown={moveDown}
           onComplete={removeOrder} onRemove={removeOrder} onUpdate={updateOrder} complexThreshold={complexThreshold} />
 
-        {/* Finance stream — unchanged */}
         <div style={{ background: '#fff', border: '0.5px solid #ddd', borderRadius: 8, marginBottom: '1rem', borderTop: '3px solid #BA7517', overflow: 'hidden' }}>
           <div style={{ padding: '0.85rem 1rem', borderBottom: '0.5px solid #eee' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>

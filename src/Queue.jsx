@@ -108,7 +108,8 @@ function RecSuggestion({ rec, order, onUpdate }) {
   )
 }
 
-// ── Portal panel ──────────────────────────────────────────────────────────────
+// ── Portal panel — production essentials only ─────────────────────────────────
+// Full comms management (touchpoints, messages, dog photo) → comms.thepetcarpenter.co.uk
 const PortalPanel = memo(function PortalPanel({ order, onUpdate, projectedMonth, usedFrac }) {
   const [copied, setCopied] = useState(false)
   const rec = recommendStage(order, projectedMonth, usedFrac)
@@ -132,7 +133,6 @@ const PortalPanel = memo(function PortalPanel({ order, onUpdate, projectedMonth,
     row:      { display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 },
     select:   { fontSize: 11, padding: '3px 6px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', background: '#fff' },
     smallInp: { fontSize: 11, padding: '3px 6px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', background: '#fff' },
-    textarea: { width: '100%', fontSize: 11, padding: '5px 7px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', resize: 'vertical', minHeight: 44, marginBottom: 6 },
     tokenBox: { fontSize: 10, padding: '3px 8px', background: '#f5f4f0', border: '0.5px solid #ddd', borderRadius: 3, color: '#555', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 240 },
     btn:      { fontSize: 11, padding: '3px 10px', border: '0.5px solid #999', borderRadius: 4, background: '#fff', fontFamily: 'Georgia,serif', cursor: 'pointer' },
     btnGreen: { fontSize: 11, padding: '3px 10px', border: '0.5px solid #1D9E75', borderRadius: 4, background: '#1D9E75', color: '#fff', fontFamily: 'Georgia,serif', cursor: 'pointer' },
@@ -142,7 +142,7 @@ const PortalPanel = memo(function PortalPanel({ order, onUpdate, projectedMonth,
     <div style={ps.wrap}>
       <div style={ps.label}>Customer portal</div>
 
-      {/* Stage */}
+      {/* Stage + recommendation */}
       <div style={ps.row}>
         <span style={{ fontSize: 11, color: '#888' }}>Stage:</span>
         <select style={ps.select} value={order.portalStage || 'confirmed'}
@@ -167,7 +167,7 @@ const PortalPanel = memo(function PortalPanel({ order, onUpdate, projectedMonth,
         )
       })()}
 
-      {/* Pet name + Colour */}
+      {/* Production details — set at order confirmation */}
       <div style={ps.row}>
         <span style={{ fontSize: 11, color: '#888' }}>Pet's name:</span>
         <input style={{ ...ps.smallInp, width: 110 }}
@@ -179,7 +179,6 @@ const PortalPanel = memo(function PortalPanel({ order, onUpdate, projectedMonth,
           onChange={e => onUpdate(order.id, { portalColour: e.target.value })} />
       </div>
 
-      {/* Finish + delivery date */}
       <div style={ps.row}>
         <span style={{ fontSize: 11, color: '#888' }}>Finish:</span>
         <input style={{ ...ps.smallInp, width: 100 }}
@@ -191,60 +190,30 @@ const PortalPanel = memo(function PortalPanel({ order, onUpdate, projectedMonth,
           onChange={e => onUpdate(order.id, { targetDate: e.target.value })} />
       </div>
 
-      {/* Dog photo URL */}
-      <div style={ps.row}>
-        <span style={{ fontSize: 11, color: '#888' }}>🐾 Dog photo URL:</span>
-        <input style={{ ...ps.smallInp, flex: 1, minWidth: 200 }}
-          value={order.dogPhotoUrl || ''} placeholder="Paste Google Drive / Dropbox public link…"
-          onChange={e => onUpdate(order.id, { dogPhotoUrl: e.target.value })} />
-        {order.dogPhotoUrl && (
-          <img src={order.dogPhotoUrl} alt="dog"
-            style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4, border: '0.5px solid #ddd', flexShrink: 0 }}
-            onError={e => e.target.style.display = 'none'} />
-        )}
-      </div>
-
-      {/* Personal message */}
-      <textarea style={ps.textarea}
-        value={order.portalMessage || ''} placeholder="Personal message shown to customer — update this as the order progresses…"
-        onChange={e => onUpdate(order.id, { portalMessage: e.target.value })} />
-
-      {/* Physical touchpoints checklist */}
-      <div style={{ marginBottom: 8 }}>
-        <div style={{ fontSize: 9, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.07em', color: '#888', marginBottom: 6 }}>Physical touchpoints</div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {TOUCHPOINTS.map(tp => {
-            const done = !!(order.touchpoints || {})[tp.key]
-            return (
-              <button key={tp.key}
-                onClick={() => onUpdate(order.id, { touchpoints: { ...(order.touchpoints || {}), [tp.key]: !done } })}
-                style={{ fontSize: 10, padding: '3px 9px', borderRadius: 4, cursor: 'pointer', fontFamily: 'Georgia,serif',
-                  background: done ? '#f0fdf4' : '#fff',
-                  border: `0.5px solid ${done ? '#86efac' : '#ddd'}`,
-                  color: done ? '#166534' : '#888',
-                  textDecoration: done ? 'none' : 'none' }}>
-                {done ? '✓ ' : ''}{tp.label}
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Token / portal link */}
+      {/* Portal link */}
       <div style={ps.row}>
         {token ? (
           <>
             <span style={ps.tokenBox} title={portalUrl}>{portalUrl}</span>
             <button style={ps.btn} onClick={handleCopy}>{copied ? '✓ Copied' : 'Copy link'}</button>
-            <button style={ps.btn} onClick={handleGenerate} title="Generate new token (old link will stop working)">↺ Regenerate</button>
+            <button style={ps.btn} onClick={handleGenerate} title="Generate new token — old link will stop working">↺ Regenerate</button>
           </>
         ) : (
           <button style={ps.btnGreen} onClick={handleGenerate}>+ Generate portal link</button>
         )}
       </div>
+
+      {/* Link to comms dashboard */}
+      <div style={{ fontSize: 10, color: '#bbb', fontStyle: 'italic', marginTop: 4 }}>
+        💬 Messages, dog photo, touchpoints &amp; nudges →{' '}
+        <a href="https://comms.thepetcarpenter.co.uk" target="_blank" style={{ color: '#1D9E75', textDecoration: 'none' }}>
+          comms.thepetcarpenter.co.uk
+        </a>
+      </div>
     </div>
   )
 })
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Everything below is the live version unchanged

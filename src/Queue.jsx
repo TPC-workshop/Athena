@@ -21,11 +21,12 @@ const PORTAL_STAGES = [
 ]
 
 const TOUCHPOINTS = [
-  { key: 'flowers',    label: '🌸 Flowers & treats sent'  },
-  { key: 'postcard',   label: '📬 Week 5 postcard sent'   },
-  { key: 'finishPhoto',label: '🖼 Finishing photo sent'   },
-  { key: 'dogPhoto',   label: '🐾 Dog photo received'     },
-  { key: 'gift',       label: '🎁 Personalised gift sent' },
+  { key: 'portalShared', label: '🔗 Portal link shared'    },
+  { key: 'flowers',      label: '🌸 Flowers & treats sent' },
+  { key: 'postcard',     label: '📬 Week 5 postcard sent'  },
+  { key: 'finishPhoto',  label: '🖼 Finishing photo sent'  },
+  { key: 'dogPhoto',     label: '🐾 Dog photo received'    },
+  { key: 'gift',         label: '🎁 Personalised gift sent'},
 ]
 
 function generateToken() {

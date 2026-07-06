@@ -196,7 +196,7 @@ const PortalPanel = memo(function PortalPanel({ order, onUpdate, projectedMonth,
           <>
             <span style={ps.tokenBox} title={portalUrl}>{portalUrl}</span>
             <button style={ps.btn} onClick={handleCopy}>{copied ? '✓ Copied' : 'Copy link'}</button>
-            <button style={ps.btn} onClick={handleGenerate} title="Generate new token — old link will stop working">↺ Regenerate</button>
+            <button style={ps.btn} onClick={() => { if (confirm('Generate a new link? The old one will stop working immediately — anything already sent to the customer will break.')) handleGenerate() }} title="Generate new token — old link will stop working">↺ Regenerate</button>
           </>
         ) : (
           <button style={ps.btnGreen} onClick={handleGenerate}>+ Generate portal link</button>
@@ -429,11 +429,11 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
           {order.portalToken ? '🔗 Portal' : 'Portal'}
           {order.portalToken && tpDone < tpTotal && <span style={{ marginLeft: 4, fontSize: 9, color: '#d97706' }}>{tpDone}/{tpTotal}</span>}
         </button>
-        <button onClick={onComplete}
+        <button onClick={() => { if (confirm(`Mark "${order.name || 'this order'}" complete and remove it from the queue? This can't be undone from here.`)) onComplete() }}
           style={{ ...btn, padding: '4px 12px', fontSize: 11, background: '#f0fdf4', color: '#166534', borderColor: '#bbf7d0' }}>
           ✓ Complete
         </button>
-        <button onClick={onRemove}
+        <button onClick={() => { if (confirm(`Delete "${order.name || 'this order'}" entirely? This can't be undone from here.`)) onRemove() }}
           style={{ ...btn, padding: '4px 8px', fontSize: 11, color: '#b91c1c', borderColor: '#fca5a5' }}>×</button>
       </div>
 

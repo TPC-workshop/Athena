@@ -457,10 +457,17 @@ const BuildDetailsPanel = memo(function BuildDetailsPanel({ order, onUpdate }) {
   );
 });
 
+function hasNoBuildDetails(order) {
+  const qtysEntered = Object.values(order.qtys || {}).some(v => (parseInt(v) || 0) > 0);
+  const bespokeEntered = (order.bespoke || []).some(b => b.desc && (parseInt(b.mins) || 0) > 0);
+  return !qtysEntered && !bespokeEntered;
+}
+
 const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, spansMonth, usedFrac, color, onMoveUp, onMoveDown, onComplete, onRemove, onUpdate }) {
   const [showPortal, setShowPortal] = useState(false)
   const [showBuild, setShowBuild] = useState(false)
   const mins = calcOrderMins(order);
+  const needsDetails = hasNoBuildDetails(order);
   const bumpBtn = { padding: '3px 8px', border: '0.5px solid #ddd', borderRadius: 3, background: '#fff', fontFamily: 'Georgia,serif', fontSize: 11, cursor: 'pointer', color: '#555' };
   const btn = { padding: '8px 16px', border: '0.5px solid #999', borderRadius: 4, background: '#fff', fontFamily: 'Georgia,serif', fontSize: 13, cursor: 'pointer' };
 
@@ -479,7 +486,7 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
         <span style={{ fontSize: 12, color: '#aaa', minWidth: 22, textAlign: 'center' }}>#{idx + 1}</span>
         <span style={{ flex: 1, fontSize: 14, fontWeight: 'bold', minWidth: 120 }}>{order.name || 'Unnamed'}</span>
         <span style={{ fontSize: 11, color: '#888', whiteSpace: 'nowrap' }}>{UNIT_TYPES.find(u => u.key === (order.unitType || 'painted'))?.label || 'Painted'}</span>
-        {mins === 0 ? (
+        {needsDetails ? (
           <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, background: '#fffbeb', color: '#92400e', border: '0.5px solid #fcd34d', whiteSpace: 'nowrap' }}>
             ⚠ No build details yet
           </span>
@@ -496,10 +503,10 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
         </div>
         <button onClick={() => setShowBuild(p => !p)}
           style={{ ...btn, padding: '4px 10px', fontSize: 11,
-            background: mins === 0 ? '#fffbeb' : '#f5f4f0',
-            color: mins === 0 ? '#92400e' : '#888',
-            borderColor: mins === 0 ? '#fcd34d' : '#ddd' }}>
-          {mins === 0 ? '🔧 Add build details' : '🔧 Build'}
+            background: needsDetails ? '#fffbeb' : '#f5f4f0',
+            color: needsDetails ? '#92400e' : '#888',
+            borderColor: needsDetails ? '#fcd34d' : '#ddd' }}>
+          {needsDetails ? '🔧 Add build details' : '🔧 Build'}
         </button>
         <button onClick={() => setShowPortal(p => !p)}
           style={{ ...btn, padding: '4px 10px', fontSize: 11,

@@ -391,8 +391,75 @@ const AddOrderForm = memo(function AddOrderForm({ stream, color, onAdd, onCancel
   );
 });
 
+// ── Build details panel — lets the workshop manager fill in / change the
+// drawer counts, unit type and bespoke tasks *after* the order has already
+// been booked into the queue. Booking (name + date) and specifying the
+// build itself are two separate jobs that often happen at different times.
+const BuildDetailsPanel = memo(function BuildDetailsPanel({ order, onUpdate }) {
+  const unitType = order.unitType || 'painted';
+  const qtys = order.qtys || Object.fromEntries(QTYS.map(([q]) => [q, 0]));
+  const bespoke = order.bespoke || [];
+
+  const inp = { width: '100%', padding: '6px 8px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', fontSize: 16, background: '#fff' };
+  const lbl = { fontSize: 11, color: '#888', display: 'block', marginBottom: 3 };
+
+  function setQty(key, val) {
+    onUpdate(order.id, { qtys: { ...qtys, [key]: parseInt(val) || 0 } });
+  }
+  function setBespoke(next) {
+    onUpdate(order.id, { bespoke: next });
+  }
+
+  return (
+    <div style={{ marginTop: 10, borderTop: '0.5px solid #f0f0f0', paddingTop: 10 }}>
+      <div style={{ fontSize: 9, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.07em', color: '#888', marginBottom: 6 }}>
+        Build details
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8, marginBottom: 10, maxWidth: 220 }}>
+        <div>
+          <label style={lbl}>Unit type</label>
+          <select value={unitType} style={{ ...inp, fontSize: 14 }}
+            onChange={e => onUpdate(order.id, { unitType: e.target.value })}>
+            {UNIT_TYPES.map(ut => <option key={ut.key} value={ut.key}>{ut.label}</option>)}
+          </select>
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(100px,1fr))', gap: 6, marginBottom: 10 }}>
+        {QTYS.map(([q, l]) => (
+          <div key={q}>
+            <label style={lbl}>{l}</label>
+            <input type="number" value={qtys[q] || 0} min="0" style={{ ...inp, fontSize: 14 }}
+              onChange={e => setQty(q, e.target.value)} />
+          </div>
+        ))}
+      </div>
+      <div>
+        <div style={{ fontSize: 11, color: '#888', marginBottom: 5 }}>Bespoke <span style={{ color: '#bbb' }}>— any non-standard tasks with their time</span></div>
+        {bespoke.map((b, i) => (
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 65px auto', gap: 6, marginBottom: 5, alignItems: 'center' }}>
+            <input placeholder="e.g. Prime shaker doors" value={b.desc || ''} style={inp}
+              onChange={e => setBespoke(bespoke.map((x, j) => j === i ? { ...x, desc: e.target.value } : x))} />
+            <input type="number" value={b.mins || 60} style={{ ...inp, fontSize: 14 }}
+              onChange={e => setBespoke(bespoke.map((x, j) => j === i ? { ...x, mins: parseInt(e.target.value) || 0 } : x))} />
+            <button onClick={() => setBespoke(bespoke.filter((_, j) => j !== i))}
+              style={{ padding: '4px 8px', border: '0.5px solid #fca5a5', borderRadius: 4, background: '#fff', color: '#b91c1c', cursor: 'pointer', fontFamily: 'Georgia,serif', fontSize: 12 }}>×</button>
+          </div>
+        ))}
+        <button onClick={() => setBespoke([...bespoke, { desc: '', mins: 60 }])}
+          style={{ padding: '4px 12px', border: '0.5px solid #999', borderRadius: 4, background: '#fff', fontFamily: 'Georgia,serif', fontSize: 12, cursor: 'pointer' }}>
+          + Add bespoke
+        </button>
+      </div>
+      <div style={{ fontSize: 10, color: '#bbb', fontStyle: 'italic', marginTop: 8 }}>
+        Changes save automatically — lead time and stream totals update as soon as details are entered.
+      </div>
+    </div>
+  );
+});
+
 const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, spansMonth, usedFrac, color, onMoveUp, onMoveDown, onComplete, onRemove, onUpdate }) {
   const [showPortal, setShowPortal] = useState(false)
+  const [showBuild, setShowBuild] = useState(false)
   const mins = calcOrderMins(order);
   const bumpBtn = { padding: '3px 8px', border: '0.5px solid #ddd', borderRadius: 3, background: '#fff', fontFamily: 'Georgia,serif', fontSize: 11, cursor: 'pointer', color: '#555' };
   const btn = { padding: '8px 16px', border: '0.5px solid #999', borderRadius: 4, background: '#fff', fontFamily: 'Georgia,serif', fontSize: 13, cursor: 'pointer' };
@@ -412,15 +479,28 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
         <span style={{ fontSize: 12, color: '#aaa', minWidth: 22, textAlign: 'center' }}>#{idx + 1}</span>
         <span style={{ flex: 1, fontSize: 14, fontWeight: 'bold', minWidth: 120 }}>{order.name || 'Unnamed'}</span>
         <span style={{ fontSize: 11, color: '#888', whiteSpace: 'nowrap' }}>{UNIT_TYPES.find(u => u.key === (order.unitType || 'painted'))?.label || 'Painted'}</span>
-        <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, background: '#f5f4f0', color: '#555', border: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>
-          {order.pctDone > 0
-            ? `${(calcOrderMins(order, true) / 60).toFixed(1)}h left of ${(mins / 60).toFixed(1)}h`
-            : `${(mins / 60).toFixed(1)}h`}
-        </span>
+        {mins === 0 ? (
+          <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, background: '#fffbeb', color: '#92400e', border: '0.5px solid #fcd34d', whiteSpace: 'nowrap' }}>
+            ⚠ No build details yet
+          </span>
+        ) : (
+          <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, background: '#f5f4f0', color: '#555', border: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>
+            {order.pctDone > 0
+              ? `${(calcOrderMins(order, true) / 60).toFixed(1)}h left of ${(mins / 60).toFixed(1)}h`
+              : `${(mins / 60).toFixed(1)}h`}
+          </span>
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: 100 }}>
           <span style={{ fontSize: 13, fontWeight: 'bold', color, whiteSpace: 'nowrap' }}>{projectedMonth || '—'}</span>
           <span style={{ fontSize: 10, color: '#aaa' }}>est. completion{spansMonth ? ' · spans months' : ''}</span>
         </div>
+        <button onClick={() => setShowBuild(p => !p)}
+          style={{ ...btn, padding: '4px 10px', fontSize: 11,
+            background: mins === 0 ? '#fffbeb' : '#f5f4f0',
+            color: mins === 0 ? '#92400e' : '#888',
+            borderColor: mins === 0 ? '#fcd34d' : '#ddd' }}>
+          {mins === 0 ? '🔧 Add build details' : '🔧 Build'}
+        </button>
         <button onClick={() => setShowPortal(p => !p)}
           style={{ ...btn, padding: '4px 10px', fontSize: 11,
             background: order.portalToken ? '#f0fdf4' : '#f5f4f0',
@@ -487,6 +567,10 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
           );
         })()}
       </div>
+
+      {showBuild && (
+        <BuildDetailsPanel order={order} onUpdate={onUpdate} />
+      )}
 
       {showPortal && (
         <PortalPanel order={order} onUpdate={onUpdate} projectedMonth={projectedMonth} usedFrac={usedFrac} />

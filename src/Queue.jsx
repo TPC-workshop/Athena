@@ -20,6 +20,7 @@ const PORTAL_STAGES = [
   { value: 'delivered', label: 'Delivered'             },
 ]
 
+
 const TOUCHPOINTS = [
   { key: 'portalShared', label: '🔗 Portal link shared'    },
   { key: 'flowers',      label: '🌸 Flowers & treats sent' },
@@ -36,13 +37,16 @@ function generateToken() {
     .join('')
 }
 
-// ── Stage recommendation ──────────────────────────────────────────────────────
+// ── Portal panel — shown inside each order card ───────────────────────────────
+// ── Stage recommendation based on days waited + total lead time ──────────────
 function recommendStage(order, projectedMonth, usedFrac) {
+  // Calculate days waited
   if (!order.orderDate) return null
   const ordered = new Date(order.orderDate)
   const daysWaited = Math.round((new Date() - ordered) / (1000*60*60*24))
   if (daysWaited < 0) return null
 
+  // Calculate total weeks to completion (same logic as OrderCard)
   let totalWeeks = null
   if (projectedMonth) {
     const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December']
@@ -58,6 +62,7 @@ function recommendStage(order, projectedMonth, usedFrac) {
     }
   }
 
+  // If no total weeks, fall back to days-only heuristic
   if (!totalWeeks || totalWeeks <= 0) {
     if (daysWaited <= 7)  return { stage: 'confirmed', reason: `${daysWaited}d waited — week 1` }
     if (daysWaited <= 14) return { stage: 'materials', reason: `${daysWaited}d waited — week 2` }
@@ -67,19 +72,22 @@ function recommendStage(order, projectedMonth, usedFrac) {
     return { stage: 'building', reason: `${daysWaited}d waited — week 11+` }
   }
 
+  // Use proportion of lead time elapsed
   const weeksWaited = daysWaited / 7
   const pct = weeksWaited / totalWeeks
+
   let stage, reason
-  if (pct < 0.08)      { stage = 'confirmed'; reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
-  else if (pct < 0.15) { stage = 'materials'; reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
-  else if (pct < 0.38) { stage = 'nurture1';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
-  else if (pct < 0.55) { stage = 'nurture2';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
-  else if (pct < 0.68) { stage = 'nurture3';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
-  else if (pct < 0.78) { stage = 'building';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
-  else if (pct < 0.88) { stage = 'painting';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
-  else if (pct < 0.94) { stage = 'finishing'; reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
-  else if (pct < 0.98) { stage = 'invoice';   reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
-  else                 { stage = 'delivery';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  if (pct < 0.08)       { stage = 'confirmed'; reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  else if (pct < 0.15)  { stage = 'materials'; reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  else if (pct < 0.38)  { stage = 'nurture1';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  else if (pct < 0.55)  { stage = 'nurture2';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  else if (pct < 0.68)  { stage = 'nurture3';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  else if (pct < 0.78)  { stage = 'building';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  else if (pct < 0.88)  { stage = 'painting';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  else if (pct < 0.94)  { stage = 'finishing'; reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  else if (pct < 0.98)  { stage = 'invoice';   reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+  else                  { stage = 'delivery';  reason = `${Math.round(weeksWaited)}w of ${totalWeeks}w (${Math.round(pct*100)}%)` }
+
   return { stage, reason }
 }
 
@@ -108,8 +116,6 @@ function RecSuggestion({ rec, order, onUpdate }) {
   )
 }
 
-// ── Portal panel — production essentials only ─────────────────────────────────
-// Full comms management (touchpoints, messages, dog photo) → comms.thepetcarpenter.co.uk
 const PortalPanel = memo(function PortalPanel({ order, onUpdate, projectedMonth, usedFrac }) {
   const [copied, setCopied] = useState(false)
   const rec = recommendStage(order, projectedMonth, usedFrac)
@@ -119,6 +125,7 @@ const PortalPanel = memo(function PortalPanel({ order, onUpdate, projectedMonth,
   function handleGenerate() {
     onUpdate(order.id, { portalToken: generateToken() })
   }
+
   function handleCopy() {
     if (!portalUrl) return
     navigator.clipboard.writeText(portalUrl).then(() => {
@@ -133,6 +140,7 @@ const PortalPanel = memo(function PortalPanel({ order, onUpdate, projectedMonth,
     row:      { display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 },
     select:   { fontSize: 11, padding: '3px 6px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', background: '#fff' },
     smallInp: { fontSize: 11, padding: '3px 6px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', background: '#fff' },
+    textarea: { width: '100%', fontSize: 11, padding: '5px 7px', border: '0.5px solid #ccc', borderRadius: 4, fontFamily: 'Georgia,serif', resize: 'vertical', minHeight: 44, marginBottom: 6 },
     tokenBox: { fontSize: 10, padding: '3px 8px', background: '#f5f4f0', border: '0.5px solid #ddd', borderRadius: 3, color: '#555', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 240 },
     btn:      { fontSize: 11, padding: '3px 10px', border: '0.5px solid #999', borderRadius: 4, background: '#fff', fontFamily: 'Georgia,serif', cursor: 'pointer' },
     btnGreen: { fontSize: 11, padding: '3px 10px', border: '0.5px solid #1D9E75', borderRadius: 4, background: '#1D9E75', color: '#fff', fontFamily: 'Georgia,serif', cursor: 'pointer' },
@@ -142,7 +150,7 @@ const PortalPanel = memo(function PortalPanel({ order, onUpdate, projectedMonth,
     <div style={ps.wrap}>
       <div style={ps.label}>Customer portal</div>
 
-      {/* Stage + recommendation */}
+      {/* Stage */}
       <div style={ps.row}>
         <span style={{ fontSize: 11, color: '#888' }}>Stage:</span>
         <select style={ps.select} value={order.portalStage || 'confirmed'}
@@ -151,23 +159,23 @@ const PortalPanel = memo(function PortalPanel({ order, onUpdate, projectedMonth,
         </select>
         <span style={{ fontSize: 11, color: '#aaa', marginLeft: 4, fontStyle: 'italic' }}>Progress % is automatic</span>
       </div>
-
       <RecSuggestion rec={rec} order={order} onUpdate={onUpdate} />
 
-      {/* Last updated */}
+      {/* Last updated indicator */}
       {order.portalStageUpdated && (()=>{
         const d = new Date(order.portalStageUpdated)
         const days = Math.floor((new Date() - d) / (1000*60*60*24))
         const label = days === 0 ? 'Updated today' : days === 1 ? 'Updated yesterday' : `Updated ${days} days ago`
         const stale = days >= 7
         return (
-          <div style={{ fontSize: 10, color: stale ? '#b91c1c' : '#aaa', marginBottom: 6, fontStyle: 'italic', ...(stale ? { fontWeight: 'bold' } : {}) }}>
+          <div style={{ fontSize: 10, color: stale ? '#b91c1c' : '#aaa', marginBottom: 6, fontStyle: 'italic',
+            ...(stale ? { fontWeight: 'bold' } : {}) }}>
             {stale ? '⚠ ' : ''}{label} — {d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
           </div>
         )
       })()}
 
-      {/* Production details — set at order confirmation */}
+      {/* Pet name + Colour */}
       <div style={ps.row}>
         <span style={{ fontSize: 11, color: '#888' }}>Pet's name:</span>
         <input style={{ ...ps.smallInp, width: 110 }}
@@ -179,6 +187,7 @@ const PortalPanel = memo(function PortalPanel({ order, onUpdate, projectedMonth,
           onChange={e => onUpdate(order.id, { portalColour: e.target.value })} />
       </div>
 
+      {/* Finish + delivery date */}
       <div style={ps.row}>
         <span style={{ fontSize: 11, color: '#888' }}>Finish:</span>
         <input style={{ ...ps.smallInp, width: 100 }}
@@ -190,7 +199,12 @@ const PortalPanel = memo(function PortalPanel({ order, onUpdate, projectedMonth,
           onChange={e => onUpdate(order.id, { targetDate: e.target.value })} />
       </div>
 
-      {/* Portal link */}
+      {/* Personal message */}
+      <textarea style={ps.textarea}
+        value={order.portalMessage || ''} placeholder="Personal message shown to customer — update this as the order progresses…"
+        onChange={e => onUpdate(order.id, { portalMessage: e.target.value })} />
+
+      {/* Token / portal link */}
       <div style={ps.row}>
         {token ? (
           <>
@@ -202,8 +216,6 @@ const PortalPanel = memo(function PortalPanel({ order, onUpdate, projectedMonth,
           <button style={ps.btnGreen} onClick={handleGenerate}>+ Generate portal link</button>
         )}
       </div>
-
-      {/* Link to comms dashboard */}
       <div style={{ fontSize: 10, color: '#bbb', fontStyle: 'italic', marginTop: 4 }}>
         💬 Messages, dog photo, touchpoints &amp; nudges →{' '}
         <a href="https://comms.thepetcarpenter.co.uk" target="_blank" style={{ color: '#1D9E75', textDecoration: 'none' }}>
@@ -214,9 +226,8 @@ const PortalPanel = memo(function PortalPanel({ order, onUpdate, projectedMonth,
   )
 })
 
-
 // ─────────────────────────────────────────────────────────────────────────────
-// Everything below is the live version unchanged
+// Everything below is UNCHANGED from original Queue.jsx
 // ─────────────────────────────────────────────────────────────────────────────
 
 function getAccrualPerDay(rd) {
@@ -232,6 +243,8 @@ async function apiLoadPlan() {
   return r.json();
 }
 async function apiSavePlanOverhead(mgmt, ws) {
+  // Fetch current full plan state, merge in just the overhead fields, save back
+  // This avoids wiping out clients/tasks/team data stored in the same object
   try {
     const current = await apiLoadPlan();
     const merged = { ...current, mgmtOverheadBudget: mgmt, wsOverheadBudget: ws };
@@ -391,10 +404,13 @@ const AddOrderForm = memo(function AddOrderForm({ stream, color, onAdd, onCancel
   );
 });
 
-// ── Build details panel — lets the workshop manager fill in / change the
-// drawer counts, unit type and bespoke tasks *after* the order has already
-// been booked into the queue. Booking (name + date) and specifying the
-// build itself are two separate jobs that often happen at different times.
+
+function hasNoBuildDetails(order) {
+  const qtysEntered = Object.values(order.qtys || {}).some(v => (parseInt(v) || 0) > 0);
+  const bespokeEntered = (order.bespoke || []).some(b => b.desc && (parseInt(b.mins) || 0) > 0);
+  return !qtysEntered && !bespokeEntered;
+}
+
 const BuildDetailsPanel = memo(function BuildDetailsPanel({ order, onUpdate }) {
   const unitType = order.unitType || 'painted';
   const qtys = order.qtys || Object.fromEntries(QTYS.map(([q]) => [q, 0]));
@@ -457,12 +473,7 @@ const BuildDetailsPanel = memo(function BuildDetailsPanel({ order, onUpdate }) {
   );
 });
 
-function hasNoBuildDetails(order) {
-  const qtysEntered = Object.values(order.qtys || {}).some(v => (parseInt(v) || 0) > 0);
-  const bespokeEntered = (order.bespoke || []).some(b => b.desc && (parseInt(b.mins) || 0) > 0);
-  return !qtysEntered && !bespokeEntered;
-}
-
+// ── OrderCard — now includes PortalPanel ─────────────────────────────────────
 const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, spansMonth, usedFrac, color, onMoveUp, onMoveDown, onComplete, onRemove, onUpdate }) {
   const [showPortal, setShowPortal] = useState(false)
   const [showBuild, setShowBuild] = useState(false)
@@ -470,8 +481,6 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
   const needsDetails = hasNoBuildDetails(order);
   const bumpBtn = { padding: '3px 8px', border: '0.5px solid #ddd', borderRadius: 3, background: '#fff', fontFamily: 'Georgia,serif', fontSize: 11, cursor: 'pointer', color: '#555' };
   const btn = { padding: '8px 16px', border: '0.5px solid #999', borderRadius: 4, background: '#fff', fontFamily: 'Georgia,serif', fontSize: 13, cursor: 'pointer' };
-
-  // Touchpoint completion indicator
   const tp = order.touchpoints || {}
   const tpDone = TOUCHPOINTS.filter(t => tp[t.key]).length
   const tpTotal = TOUCHPOINTS.length
@@ -501,6 +510,7 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
           <span style={{ fontSize: 13, fontWeight: 'bold', color, whiteSpace: 'nowrap' }}>{projectedMonth || '—'}</span>
           <span style={{ fontSize: 10, color: '#aaa' }}>est. completion{spansMonth ? ' · spans months' : ''}</span>
         </div>
+        {/* Portal indicator — green dot if token exists */}
         <button onClick={() => setShowBuild(p => !p)}
           style={{ ...btn, padding: '4px 10px', fontSize: 11,
             background: needsDetails ? '#fffbeb' : '#f5f4f0',
@@ -516,14 +526,15 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
           {order.portalToken ? '🔗 Portal' : 'Portal'}
           {order.portalToken && tpDone < tpTotal && <span style={{ marginLeft: 4, fontSize: 9, color: '#d97706' }}>{tpDone}/{tpTotal}</span>}
         </button>
-        <button onClick={() => { if (confirm(`Mark "${order.name || 'this order'}" complete and remove it from the queue? This can't be undone from here.`)) onComplete() }}
+        <button onClick={() => { if (confirm(`Mark "${order.name || 'this order'}" complete and remove it from the queue?`)) onComplete() }}
           style={{ ...btn, padding: '4px 12px', fontSize: 11, background: '#f0fdf4', color: '#166534', borderColor: '#bbf7d0' }}>
           ✓ Complete
         </button>
-        <button onClick={() => { if (confirm(`Delete "${order.name || 'this order'}" entirely? This can't be undone from here.`)) onRemove() }}
+        <button onClick={() => { if (confirm(`Delete "${order.name || 'this order'}" entirely?`)) onRemove() }}
           style={{ ...btn, padding: '4px 8px', fontSize: 11, color: '#b91c1c', borderColor: '#fca5a5' }}>×</button>
       </div>
 
+      {/* Order date + % done row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, paddingLeft: 4, flexWrap: 'wrap' }}>
         <label style={{ fontSize: 11, color: '#aaa', whiteSpace: 'nowrap' }}>Order date:</label>
         <input type="date" value={order.orderDate || ''}
@@ -532,7 +543,7 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
         <label style={{ fontSize: 11, color: '#aaa', whiteSpace: 'nowrap', marginLeft: 8 }}>% done:</label>
         <input type="number" value={order.pctDone || 0} min="0" max="100" step="5"
           onChange={e => onUpdate && onUpdate(order.id, { pctDone: Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)) })}
-          style={{ width: 58, fontSize: 12, padding: '2px 6px', border: '0.5px solid #ddd', borderRadius: 4, fontFamily: 'Georgia,serif', color: '#555', background: '#fafaf8' }} />
+          style={{ width: 58, fontSize: 12, padding: '2px 6px', border: '0.5px solid #ddd', borderRadius: 4, fontFamily: 'Georgia,serif', color: '#555', background: '#fafal8' }} />
         <span style={{ fontSize: 11, color: '#aaa' }}>%</span>
         {(order.pctDone > 0) && <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4,
           background: order.pctDone >= 100 ? '#f0fdf4' : '#f5f4f0',
@@ -579,6 +590,7 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
         <BuildDetailsPanel order={order} onUpdate={onUpdate} />
       )}
 
+      {/* Portal panel — collapsible */}
       {showPortal && (
         <PortalPanel order={order} onUpdate={onUpdate} projectedMonth={projectedMonth} usedFrac={usedFrac} />
       )}
@@ -771,23 +783,40 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     const queue = [...orders];
     let monthIdx = 0;
     let usedMins = 0;
+
     for (const order of queue) {
-      const orderMins = calcOrderMins(order, true);
+      let remainingMins = calcOrderMins(order, true); // use remaining hours based on % done
       let allocated = false;
-      while (monthIdx < months.length) {
+
+      // Allow orders to span months — fill as much as fits, carry overflow to next month
+      while (monthIdx < months.length && remainingMins > 0) {
         const cap = getCapFn(months[monthIdx]);
         const available = cap - usedMins;
-        if (available >= orderMins) {
-          usedMins += orderMins;
+
+        if (available <= 0) {
+          // Month is full, move to next
+          monthIdx++;
+          usedMins = 0;
+          continue;
+        }
+
+        if (available >= remainingMins) {
+          // Order fits entirely in this month
+          usedMins += remainingMins;
           const usedFrac = cap > 0 ? usedMins / cap : 1;
           result.push({ ...order, projectedMonth: months[monthIdx].label, usedFrac });
+          remainingMins = 0;
           allocated = true;
           break;
         } else {
+          // Order spans into next month — use up what's available and carry remainder
+          remainingMins -= available;
+          usedMins = cap; // month is now full
           monthIdx++;
           usedMins = 0;
         }
       }
+
       if (!allocated) result.push({ ...order, projectedMonth: 'Beyond calendar' });
     }
     return result;
@@ -931,6 +960,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
           ))}
         </div>
 
+        {/* Queue team — unchanged */}
         <div style={card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <div style={H}>Queue team</div>
@@ -978,6 +1008,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
           </div>
         </div>
 
+        {/* Calendar — unchanged */}
         <div style={card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <div style={H}>Working calendar</div>
@@ -1054,6 +1085,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
           )}
         </div>
 
+        {/* Queue settings — unchanged */}
         <div style={{ background: '#fff', border: '0.5px solid #ddd', borderRadius: 8, padding: '0.85rem 1rem', marginBottom: '1rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <div style={{ fontSize: 9, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.07em', color: '#888' }}>Queue settings</div>
@@ -1134,6 +1166,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
           onAdd={addOrder} onMoveUp={moveUp} onMoveDown={moveDown}
           onComplete={removeOrder} onRemove={removeOrder} onUpdate={updateOrder} complexThreshold={complexThreshold} />
 
+        {/* Finance stream — unchanged */}
         <div style={{ background: '#fff', border: '0.5px solid #ddd', borderRadius: 8, marginBottom: '1rem', borderTop: '3px solid #BA7517', overflow: 'hidden' }}>
           <div style={{ padding: '0.85rem 1rem', borderBottom: '0.5px solid #eee' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>

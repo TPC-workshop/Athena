@@ -703,9 +703,21 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   triggerSave.current = async () => {
     clearTimeout(saveTimer.current);
     setSaveMsg('Saving…');
+    // Stamp each order with its currently-computed projectedMonth + usedFrac before saving.
+    // These are normally ephemeral (recalculated on every render from the calendar/team
+    // capacity), but comms.html has no access to that scheduling engine — so we persist
+    // the *result* here to give it the same lead-time-aware stage recommendation Athena
+    // uses, instead of comms falling back to its own flat days-waited heuristic.
+    const stampSchedule = (orders, scheduled) => orders.map(o => {
+      const sc = scheduled.find(s => s.id === o.id);
+      if (!sc) return o;
+      return { ...o, projectedMonth: sc.projectedMonth, usedFrac: sc.usedFrac };
+    });
+    const stampedSimple = stampSchedule(simpleOrders, scheduledSimple);
+    const stampedComplex = stampSchedule(complexOrders, scheduledComplex);
     saveTimer.current = setTimeout(async () => {
       setSaving(true);
-      await apiSaveQueue({ simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexThreshold, queueTeam, mgmtOverhead, wsOverhead });
+      await apiSaveQueue({ simpleOrders: stampedSimple, complexOrders: stampedComplex, financeOrders, qCount, calendarMonths, overtimePool, complexThreshold, queueTeam, mgmtOverhead, wsOverhead });
       setSaving(false);
       setSaveMsg('✓ Saved');
       setTimeout(() => setSaveMsg(''), 3000);

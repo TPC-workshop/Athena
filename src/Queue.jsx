@@ -669,6 +669,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   // state and apply only the fields we actually touched on top of it,
   // instead of overwriting everything wholesale.
   const pendingChangesRef = useRef({});  // { orderId: { field: value, ... } } — accumulated since our last successful save
+  const pendingRemovalsRef = useRef(new Set()); // order ids removed/completed locally since our last successful save — must not be resurrected by a stale server fetch
   const baselineRef = useRef(null);      // last full queue state we know is on the server, used to tell "we changed this" from "someone else changed this"
   const skipNextSaveRef = useRef(false); // set right after we reconcile+save, so writing the reconciled result back into state doesn't itself trigger another save
 
@@ -742,6 +743,8 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
       // the latest data, instead of blowing the latest data away entirely.
       const patches = pendingChangesRef.current;
       pendingChangesRef.current = {}; // any edits made during the fetch below land safely in the new object
+      const removedIds = pendingRemovalsRef.current;
+      pendingRemovalsRef.current = new Set(); // any removals made during the fetch below land safely in the new set
 
       let fresh = null;
       try {
@@ -760,8 +763,10 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
           const patch = patches[o.id];
           return patch ? { ...base, ...patch } : { ...base };
         });
-        // Keep any order added elsewhere since our last load that we don't know about yet
-        freshArr.forEach(o => { if (!localIds.has(o.id)) merged.push(o); });
+        // Keep any order added elsewhere since our last load that we don't know about yet —
+        // but never resurrect one we just completed/removed locally, even if the server
+        // copy we fetched hasn't caught up with that removal yet.
+        freshArr.forEach(o => { if (!localIds.has(o.id) && !removedIds.has(o.id)) merged.push(o); });
         return merged;
       };
 
@@ -978,6 +983,10 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     if (stream === 'simple') setSimpleOrders(p => p.filter(o => o.id !== id));
     else if (stream === 'complex') setComplexOrders(p => p.filter(o => o.id !== id));
     else setFinanceOrders(p => p.filter(o => o.id !== id));
+    // Remember this removal so a save that races with a stale server fetch
+    // doesn't add the completed/deleted order back in (see pendingRemovalsRef).
+    pendingRemovalsRef.current.add(id);
+    delete pendingChangesRef.current[id];
   }
 
   function moveUp(stream, idx) {

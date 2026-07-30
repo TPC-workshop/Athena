@@ -551,9 +551,24 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
             ))}
             {matCost && hasDims && (
               <span style={{ fontSize:11, padding:'2px 7px', borderRadius:4, background:'#f5f4f0', color:'#555', border:'0.5px solid #e5e7eb', whiteSpace:'nowrap' }}>
-                £{matCost.total.toFixed(2)}
+                mat £{matCost.total.toFixed(2)}
               </span>
             )}
+            {/* Sale price */}
+            <label style={{ fontSize:11, color:'#aaa', whiteSpace:'nowrap', marginLeft:4 }}>Sale £</label>
+            <input type="number" value={order.salePrice||''} min="0" step="1" placeholder="0"
+              onChange={e => onUpdate && onUpdate(order.id, { salePrice: parseFloat(e.target.value)||0 })}
+              style={{ width:72, padding:'2px 5px', border:'0.5px solid #ddd', borderRadius:3, fontFamily:'Georgia,serif', fontSize:13, background:'#fafaf8' }}/>
+            {/* Gross profit */}
+            {matCost && (order.salePrice > 0) && (()=>{
+              const gp = (parseFloat(order.salePrice)||0) - matCost.total;
+              return <span style={{ fontSize:11, padding:'2px 7px', borderRadius:4, whiteSpace:'nowrap', fontWeight:'bold',
+                background: gp >= 0 ? '#f0fdf4' : '#fef2f2',
+                color: gp >= 0 ? '#166534' : '#b91c1c',
+                border: `0.5px solid ${gp >= 0 ? '#bbf7d0' : '#fca5a5'}` }}>
+                GP £{gp.toFixed(2)}
+              </span>;
+            })()}
             {matPrices && (
               <button onClick={() => onUpdate && onUpdate(order.id, { inMaterialsForecast: !order.inMaterialsForecast })}
                 title="Include in materials forecast"
@@ -899,7 +914,12 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   // Notify App of selected orders for Materials forecast
   useEffect(() => {
     if (onSelectedOrdersChange) {
-      const selected = [...simpleOrders, ...complexOrders, ...financeOrders].filter(o => o.inMaterialsForecast);
+      // Attach totalHrs (from calcOrderMins) to each selected order for labour calculation
+      const allOrders = [...simpleOrders, ...complexOrders, ...financeOrders];
+      const selected = allOrders.filter(o => o.inMaterialsForecast).map(o => ({
+        ...o,
+        totalHrs: calcOrderMins(o) / 60,
+      }));
       onSelectedOrdersChange(selected);
     }
   }, [simpleOrders, complexOrders, financeOrders, onSelectedOrdersChange]);

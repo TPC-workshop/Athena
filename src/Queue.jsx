@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, memo } from 'react';
 import { ROLE_DEFS, QTYS, UNIT_TYPES, genClientTasks } from './data.js';
+import { calcOrderMaterials } from './Materials.jsx';
 
 const QUEUE_PASSWORD = 'TPCLeadtime!';
 const API_PASSWORD = 'Ath3na-W0rk5h0p!';
@@ -474,7 +475,7 @@ const BuildDetailsPanel = memo(function BuildDetailsPanel({ order, onUpdate }) {
 });
 
 // ── OrderCard — now includes PortalPanel ─────────────────────────────────────
-const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, spansMonth, usedFrac, color, onMoveUp, onMoveDown, onComplete, onRemove, onUpdate }) {
+const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, spansMonth, usedFrac, color, onMoveUp, onMoveDown, onComplete, onRemove, onUpdate, matPrices }) {
   const [showPortal, setShowPortal] = useState(false)
   const [showBuild, setShowBuild] = useState(false)
   const mins = calcOrderMins(order);
@@ -533,6 +534,40 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
         <button onClick={() => { if (confirm(`Delete "${order.name || 'this order'}" entirely?`)) onRemove() }}
           style={{ ...btn, padding: '4px 8px', fontSize: 11, color: '#b91c1c', borderColor: '#fca5a5' }}>×</button>
       </div>
+
+      {/* Dimensions + material cost row */}
+      {(()=>{
+        const dims = order.dims || {};
+        const hasDims = dims.width && dims.height && dims.depth;
+        const matCost = matPrices ? calcOrderMaterials(order, matPrices) : null;
+        const inp2 = { padding:'2px 5px', border:'0.5px solid #ddd', borderRadius:3, fontFamily:'Georgia,serif', fontSize:13, background:'#fafaf8', width:62 };
+        return (
+          <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:6, paddingLeft:4, flexWrap:'wrap' }}>
+            <label style={{ fontSize:11, color:'#aaa', whiteSpace:'nowrap' }}>W×H×D (mm):</label>
+            {['width','height','depth'].map(k => (
+              <input key={k} type="number" value={dims[k]||''} placeholder={k[0].toUpperCase()} min="0"
+                onChange={e => onUpdate && onUpdate(order.id, { dims: { ...dims, [k]: parseInt(e.target.value)||0 } })}
+                style={inp2}/>
+            ))}
+            {matCost && hasDims && (
+              <span style={{ fontSize:11, padding:'2px 7px', borderRadius:4, background:'#f5f4f0', color:'#555', border:'0.5px solid #e5e7eb', whiteSpace:'nowrap' }}>
+                £{matCost.total.toFixed(2)}
+              </span>
+            )}
+            {matPrices && (
+              <button onClick={() => onUpdate && onUpdate(order.id, { inMaterialsForecast: !order.inMaterialsForecast })}
+                title="Include in materials forecast"
+                style={{ fontSize:11, padding:'2px 8px', borderRadius:4,
+                  border: order.inMaterialsForecast ? '1.5px solid #BA7517' : '0.5px solid #ddd',
+                  background: order.inMaterialsForecast ? '#BA7517' : '#fff',
+                  color: order.inMaterialsForecast ? '#fff' : '#aaa',
+                  cursor:'pointer', fontFamily:'Georgia,serif', whiteSpace:'nowrap' }}>
+                £ forecast
+              </button>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Order date + % done row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, paddingLeft: 4, flexWrap: 'wrap' }}>
@@ -598,7 +633,7 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
   );
 });
 
-function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo, setAddingTo, onAdd, onMoveUp, onMoveDown, onComplete, onRemove, onUpdate, complexThreshold }) {
+function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo, setAddingTo, onAdd, onMoveUp, onMoveDown, onComplete, onRemove, onUpdate, complexThreshold, matPrices }) {
   const totalMins = orders.reduce((a, o) => a + calcOrderMins(o), 0);
   const btn = { padding: '8px 16px', border: '0.5px solid #999', borderRadius: 4, background: '#fff', fontFamily: 'Georgia,serif', fontSize: 13, cursor: 'pointer' };
 
@@ -632,7 +667,7 @@ function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo
           return (
             <OrderCard key={o.id} order={o} stream={stream} idx={idx}
               projectedMonth={sc?.projectedMonth} spansMonth={sc?.spansMonth} usedFrac={sc?.usedFrac}
-              color={color}
+              color={color} matPrices={matPrices}
               onMoveUp={() => onMoveUp(stream, idx)}
               onMoveDown={() => onMoveDown(stream, idx)}
               onComplete={() => onComplete(stream, o.id)}
@@ -650,7 +685,7 @@ function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo
   );
 }
 
-export default function Queue({ activeKeys: propActiveKeys, workingDays: propWorkingDays, mgmtOverheadBudget: propMgmt, wsOverheadBudget: propWs }) {
+export default function Queue({ activeKeys: propActiveKeys, workingDays: propWorkingDays, mgmtOverheadBudget: propMgmt, wsOverheadBudget: propWs, matPrices, onSelectedOrdersChange }) {
   const [authed, setAuthed] = useState(() => sessionStorage.getItem('queueAuthed') === '1');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -860,6 +895,14 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
 
   const scheduledSimple = calcStream(simpleOrders, m => getMonthStreamMins('simple', m));
   const scheduledComplex = calcStream(complexOrders, m => getMonthStreamMins('complex', m));
+
+  // Notify App of selected orders for Materials forecast
+  useEffect(() => {
+    if (onSelectedOrdersChange) {
+      const selected = [...simpleOrders, ...complexOrders, ...financeOrders].filter(o => o.inMaterialsForecast);
+      onSelectedOrdersChange(selected);
+    }
+  }, [simpleOrders, complexOrders, financeOrders, onSelectedOrdersChange]);
   const simpleLead = calcLeadTimeWeeks(scheduledSimple);
   const complexLead = calcLeadTimeWeeks(scheduledComplex);
   const financeTotal = financeOrders.reduce((a, o) => a + calcOrderMins(o), 0);
@@ -1190,13 +1233,13 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
           orders={simpleOrders} scheduled={scheduledSimple} lead={simpleLead}
           addingTo={addingTo} setAddingTo={setAddingTo}
           onAdd={addOrder} onMoveUp={moveUp} onMoveDown={moveDown}
-          onComplete={removeOrder} onRemove={removeOrder} onUpdate={updateOrder} complexThreshold={complexThreshold} />
+          onComplete={removeOrder} onRemove={removeOrder} onUpdate={updateOrder} complexThreshold={complexThreshold} matPrices={matPrices}/>
 
         <StreamSection title="Complex builds" color="#7F77DD" stream="complex"
           orders={complexOrders} scheduled={scheduledComplex} lead={complexLead}
           addingTo={addingTo} setAddingTo={setAddingTo}
           onAdd={addOrder} onMoveUp={moveUp} onMoveDown={moveDown}
-          onComplete={removeOrder} onRemove={removeOrder} onUpdate={updateOrder} complexThreshold={complexThreshold} />
+          onComplete={removeOrder} onRemove={removeOrder} onUpdate={updateOrder} complexThreshold={complexThreshold} matPrices={matPrices}/>
 
         {/* Finance stream — unchanged */}
         <div style={{ background: '#fff', border: '0.5px solid #ddd', borderRadius: 8, marginBottom: '1rem', borderTop: '3px solid #BA7517', overflow: 'hidden' }}>

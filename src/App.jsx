@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { ROLE_DEFS, QTYS, UNIT_TYPES, getQty, rColor, rLabel, genClientTasks, genMgmtTasks, genWsTasks } from './data.js';
 import Progress from './Progress.jsx';
 import Queue from './Queue.jsx';
+import Materials from './Materials.jsx';
 
 const COLORS = ['#1D9E75','#7F77DD','#D85A30','#378ADD','#D4537E','#BA7517','#639922','#E24B4A','#0F6E56'];
 const PASSWORD = 'Ath3na-W0rk5h0p!';
@@ -58,7 +59,6 @@ const AdHocRow = memo(function AdHocRow({ t, src, activeRoles, onSet, budgets, a
   );
 });
 
-// Count-based task row — number input for monthly tally, role assignment
 const CountTaskRow = memo(function CountTaskRow({ t, src, activeRoles, onSet, budgets, assignedMins, roleLookup }) {
   const isAssigned = !!t.assignedRole;
   const count = t.count || 0;
@@ -104,7 +104,6 @@ const CountTaskRow = memo(function CountTaskRow({ t, src, activeRoles, onSet, bu
   );
 });
 
-// Count-based collapsible section
 const CountSection = memo(function CountSection({ title, color, tasks, src, activeRoles, onSet, budgets, assignedMins, roleLookup, children }) {
   const [open, setOpen] = useState(true);
   return (
@@ -124,7 +123,6 @@ const CountSection = memo(function CountSection({ title, color, tasks, src, acti
   );
 });
 
-// Client task row — checkbox based
 const TaskRow = memo(function TaskRow({ t, src, activeRoles, onSet, budgets, assignedMins, roleLookup }) {
   const isDone=t.done, isAssigned=!!t.assignedRole;
   const rl = roleLookup || {};
@@ -158,7 +156,6 @@ const TaskRow = memo(function TaskRow({ t, src, activeRoles, onSet, budgets, ass
   );
 });
 
-// Client order collapsible section — auto-minimises when 100% done
 const ClientSection = memo(function ClientSection({ title, color, tasks, src, activeRoles, onSet, showDone, budgets, assignedMins, defaultOpen, roleLookup, children }) {
   const [open, setOpen] = useState(defaultOpen !== false);
   const visible = tasks.filter(t=>showDone||!t.done);
@@ -179,7 +176,6 @@ const ClientSection = memo(function ClientSection({ title, color, tasks, src, ac
   );
 });
 
-// ── Client order card — lifted outside App to prevent remount on every keystroke
 const ClientOrderCard = memo(function ClientOrderCard({ cl, status, uCl, uQty, uB, setClients, delCl, UNIT_TYPES, QTYS, inp, btn, lbl }) {
   return (
     <div style={{background:'#fff',border:'0.5px solid #ddd',borderRadius:8,marginBottom:'0.75rem',borderLeft:`3px solid ${cl.col}`,overflow:'hidden'}}>
@@ -227,7 +223,6 @@ const ClientOrderCard = memo(function ClientOrderCard({ cl, status, uCl, uQty, u
   );
 });
 
-// Overhead countdown bar component
 function OverheadBar({ label, color, budgetHrs, doneMins, adHocMins }) {
   const budgetMins = (parseFloat(budgetHrs)||0) * 60;
   const totalUsed = doneMins + adHocMins;
@@ -270,10 +265,8 @@ export default function App() {
   const saveTimer = useRef(null);
 
   const [activeKeys, setActiveKeys] = useState(['manager','maker1','assistant']);
-  const [extraRoles, setExtraRoles] = useState([]); // [{key,label,color,stdDay,daysPerWeek,holiday,stream}]
-  // stream assignment per role key: 'simple'|'complex'|'overhead'
+  const [extraRoles, setExtraRoles] = useState([]);
   const [roleStreams, setRoleStreams] = useState({manager:'complex',maker1:'simple',maker2:'simple',painter:'overhead',assistant:'simple'});
-  // editable hours/days per standard role
   const [roleHours, setRoleHours] = useState({manager:{stdDay:7.5,daysPerWeek:5},maker1:{stdDay:7,daysPerWeek:5},maker2:{stdDay:7,daysPerWeek:5},painter:{stdDay:7,daysPerWeek:5},assistant:{stdDay:7,daysPerWeek:3}});
   const [monthName, setMonthName] = useState('');
   const [workingDays, setWorkingDays] = useState(21);
@@ -289,11 +282,28 @@ export default function App() {
   const [mgmtTasks, setMgmtTasks] = useState(()=>genMgmtTasks());
   const [wsTasks, setWsTasks] = useState(()=>genWsTasks());
   const [clientTasks, setClientTasks] = useState({});
-  const [extraTasks, setExtraTasks] = useState([]);       // production ad hoc
+  const [extraTasks, setExtraTasks] = useState([]);
   const [newExtra, setNewExtra] = useState({n:'',m:30});
-  const [mgmtExtraTasks, setMgmtExtraTasks] = useState([]); // management ad hoc
+  const [mgmtExtraTasks, setMgmtExtraTasks] = useState([]);
   const [newMgmtExtra, setNewMgmtExtra] = useState({n:'',m:30});
   const [activeSheet, setActiveSheet] = useState(null);
+
+  // Materials prices state
+  const [matPrices, setMatPrices] = useState({
+    mdf18: 0, mdf9: 0, oak18: 0, oak9: 0, worktop: 0,
+    strip36: 0, strip44: 0, strip70: 0, strip94: 0,
+    bar6000: 0, jwlLatch: 0, boltLatch: 0, shakerHinge: 0, doorHinge: 0,
+    handle: 0, runner: 0, hammerite: 0, consumables: 0,
+    paint1L: 0, paint2_5L: 0, paint5L: 0,
+    drawer: 0, waxedDrawer: 0,
+    hingedDoor: 0, waxedHingedDoor: 0,
+    slidingDoor: 0, waxedSlidingDoor: 0,
+    upOverDoor: 0, waxedUpOverDoor: 0,
+    shakerDoor: 0, waxedShakerDoor: 0,
+    shelf: 0, bars: 0,
+    panelDivide: 0, waxedPanelDivide: 0,
+    dogDivide: 0, waxedDogDivide: 0,
+  });
 
   const activeRoles = [...ROLE_DEFS.filter(r=>activeKeys.includes(r.key)), ...extraRoles];
 
@@ -318,13 +328,14 @@ export default function App() {
       if (s.extraRoles) setExtraRoles(s.extraRoles);
       if (s.roleStreams) setRoleStreams(s.roleStreams);
       if (s.roleHours) setRoleHours(s.roleHours);
+      if (s.matPrices) setMatPrices(p=>({...p,...s.matPrices}));
       setLoading(false);
     }).catch(()=>setLoading(false));
   }, []);
 
   const stateRef = useRef({});
   useEffect(() => {
-    stateRef.current = { monthName,workingDays,activeKeys,holiday,extraRoles,roleStreams,roleHours,mgmtOverheadBudget,wsOverheadBudget,clients,cCount,absence,dayDate,dayHrs,mgmtTasks,wsTasks,clientTasks,extraTasks,mgmtExtraTasks };
+    stateRef.current = { monthName,workingDays,activeKeys,holiday,extraRoles,roleStreams,roleHours,mgmtOverheadBudget,wsOverheadBudget,clients,cCount,absence,dayDate,dayHrs,mgmtTasks,wsTasks,clientTasks,extraTasks,mgmtExtraTasks,matPrices };
   });
 
   const triggerSave = useCallback(() => {
@@ -339,7 +350,7 @@ export default function App() {
     }, 1500);
   }, []);
 
-  useEffect(()=>{ if(!loading) triggerSave(); }, [monthName,workingDays,activeKeys,holiday,extraRoles,roleStreams,roleHours,mgmtOverheadBudget,wsOverheadBudget,clients,cCount,absence,dayDate,dayHrs,mgmtTasks,wsTasks,clientTasks,extraTasks,mgmtExtraTasks]);
+  useEffect(()=>{ if(!loading) triggerSave(); }, [monthName,workingDays,activeKeys,holiday,extraRoles,roleStreams,roleHours,mgmtOverheadBudget,wsOverheadBudget,clients,cCount,absence,dayDate,dayHrs,mgmtTasks,wsTasks,clientTasks,extraTasks,mgmtExtraTasks,matPrices]);
 
   function getMonthHrs(key) {
     const er = extraRoles.find(r=>r.key===key);
@@ -360,11 +371,9 @@ export default function App() {
     return roleStreams[key]||'simple';
   }
 
-  // Keys by stream
   const allActiveKeys = [...activeKeys, ...extraRoles.map(r=>r.key)];
   const simpleKeys = allActiveKeys.filter(k=>getRoleStream(k)==='simple');
   const complexKeys = allActiveKeys.filter(k=>getRoleStream(k)==='complex');
-  // overhead pool people — their hours are deducted from total but not assigned to either stream
   const overheadKeys = allActiveKeys.filter(k=>getRoleStream(k)==='overhead');
 
   const totalAvail = allActiveKeys.reduce((a,k)=>a+getMonthHrs(k)*60,0);
@@ -373,19 +382,15 @@ export default function App() {
   const wsBudgetMins = (parseFloat(wsOverheadBudget)||0)*60;
   const totalOverheadBudget = mgmtBudgetMins + wsBudgetMins;
 
-  // Simple stream capacity — simple team hours minus their share of overhead
   const simpleRawMins = simpleKeys.reduce((a,k)=>a+getMonthHrs(k)*60,0);
   const complexRawMins = complexKeys.reduce((a,k)=>a+getMonthHrs(k)*60,0);
   const overheadRawMins = overheadKeys.reduce((a,k)=>a+getMonthHrs(k)*60,0);
   const totalRawMins = simpleRawMins + complexRawMins + overheadRawMins;
-  // Overhead is split proportionally by raw hours
   const simpleFrac = totalRawMins > 0 ? simpleRawMins / totalRawMins : 0.5;
   const complexFrac = totalRawMins > 0 ? complexRawMins / totalRawMins : 0.5;
   const simpleOverhead = totalOverheadBudget * simpleFrac;
   const complexOverhead = totalOverheadBudget * complexFrac;
 
-  // Spray time deduction from complex capacity (manager sprays simple units)
-  // Top coat 1 + Top coat 2 = 90 mins per painted unit, spray bars = 30 mins per bar set
   function calcSimpleSprayMins(orderList) {
     return orderList.filter(cl=>cl.stream==='simple'||!cl.stream).reduce((a,cl)=>{
       const paintUnits = parseInt(cl.qtys.paint)||0;
@@ -398,19 +403,13 @@ export default function App() {
   const complexClients = clients.filter(cl=>cl.stream==='complex');
   const simpleSprayMins = calcSimpleSprayMins(simpleClients);
 
-  // Production capacity per stream
   const simpleProdAvail = Math.max(0, simpleRawMins - simpleOverhead - absenceMins*simpleFrac);
   const complexProdAvail = Math.max(0, complexRawMins - complexOverhead - absenceMins*complexFrac - simpleSprayMins);
 
-  // Overhead consumed: count × task minutes
   const mgmtDoneMins = mgmtTasks.reduce((a,t)=>a+(t.count||0)*(t.m||0),0);
   const wsDoneMins = wsTasks.reduce((a,t)=>a+(t.count||0)*(t.m||0),0);
   const mgmtAdHocMins = mgmtExtraTasks.filter(t=>t.done).reduce((a,t)=>a+(t.m||0),0);
-  // Workshop ad hoc (incl. MDF priming) counts against workshop overhead, not production
   const wsAdHocMins = extraTasks.reduce((a,t)=>a+(t.m||0),0);
-
-  // Production capacity: total minus overhead budgets minus absence only
-
 
   const simpleTotalOrder = simpleClients.reduce((a,cl)=>{ const tasks=genClientTasks(cl); return a+tasks.reduce((s,t)=>s+(t.m||0),0); },0);
   const complexTotalOrder = complexClients.reduce((a,cl)=>{ const tasks=genClientTasks(cl); return a+tasks.reduce((s,t)=>s+(t.m||0),0); },0);
@@ -422,9 +421,6 @@ export default function App() {
   const simpleRemain = simpleProdAvail - simpleTotalOrder;
   const complexRemain = complexProdAvail - complexTotalOrder;
   const remain = simpleRemain + complexRemain;
-
-  function erColor(k) { const er=extraRoles.find(r=>r.key===k); return er?er.color:rColor(k); }
-  function erLabel(k) { const er=extraRoles.find(r=>r.key===k); return er?er.label:rLabel(k); }
 
   function getOrderPct(clId) {
     const tasks = clientTasks[clId]||[];
@@ -493,7 +489,6 @@ export default function App() {
 
   function getAssignedMins(k) {
     let m=0;
-    // Count tasks: assigned to person, 1 unit of their time per task (for daily budget tracking)
     [...mgmtTasks,...wsTasks].filter(t=>t.assignedRole===k).forEach(t=>m+=(t.m||0));
     [...extraTasks,...mgmtExtraTasks].filter(t=>t.assignedRole===k&&!t.done).forEach(t=>m+=t.m||0);
     Object.values(clientTasks).forEach(ts=>ts.filter(t=>t.assignedRole===k&&!t.done).forEach(t=>m+=t.m||0));
@@ -508,7 +503,6 @@ export default function App() {
     return tasks;
   }
 
-  // Extra-role aware label/color lookup
   function allRoleLabel(k) { const er=extraRoles.find(r=>r.key===k); return er?er.label:rLabel(k); }
   function allRoleColor(k) { const er=extraRoles.find(r=>r.key===k); return er?er.color:rColor(k); }
 
@@ -528,7 +522,6 @@ export default function App() {
 
   const budgets = Object.fromEntries(activeRoles.map(rd=>([rd.key,(parseFloat(dayHrs[rd.key])||0)*60])));
   const assignedMins = Object.fromEntries(activeRoles.map(rd=>([rd.key,getAssignedMins(rd.key)])));
-  // Role lookup for extra roles — passes correct label/color to task row components
   const roleLookup = {
     label: k => { const er=extraRoles.find(r=>r.key===k); return er?er.label:rLabel(k); },
     color: k => { const er=extraRoles.find(r=>r.key===k); return er?er.color:rColor(k); },
@@ -541,8 +534,6 @@ export default function App() {
   const btn={padding:'8px 16px',border:'0.5px solid #999',borderRadius:4,background:'#fff',fontFamily:'Georgia,serif',fontSize:13,cursor:'pointer'};
   const btnP={padding:'10px 22px',border:'none',borderRadius:4,background:'#1a1a1a',color:'#fff',fontFamily:'Georgia,serif',fontSize:13,cursor:'pointer'};
   const lbl={fontSize:11,color:'#888',display:'block',marginBottom:3};
-
-
 
   if (loading) return <div style={{fontFamily:'Georgia,serif',textAlign:'center',padding:'3rem',color:'#aaa'}}>Loading Athena…</div>;
   if (mode==='progress') return (
@@ -563,7 +554,7 @@ export default function App() {
       </div>
 
       <div style={{display:'flex',gap:4,marginBottom:'1rem',background:'#fff',border:'0.5px solid #ddd',borderRadius:8,padding:4}}>
-        {[['queue','0 · Queue'],['plan','1 · Plan'],['daily','2 · Dispatch'],['sheets','3 · Sheets'],['progress','4 · Progress']].map(([m,l])=>(
+        {[['queue','0 · Queue'],['materials','1 · Materials'],['plan','2 · Plan'],['daily','3 · Dispatch'],['sheets','4 · Sheets'],['progress','5 · Progress']].map(([m,l])=>(
           <button key={m} onClick={()=>m==='daily'?startDaily():setMode(m)}
             style={{flex:1,padding:'10px 4px',border:'none',borderRadius:6,background:mode===m?'#1a1a1a':'transparent',color:mode===m?'#fff':'#888',fontFamily:'Georgia,serif',fontSize:12,cursor:'pointer',fontWeight:mode===m?'bold':'normal'}}>{l}</button>
         ))}
@@ -574,6 +565,9 @@ export default function App() {
       </div>
 
       {mode==='queue'&&<Queue activeKeys={activeKeys} workingDays={workingDays} mgmtOverheadBudget={mgmtOverheadBudget} wsOverheadBudget={wsOverheadBudget}/>}
+
+      {mode==='materials'&&<Materials prices={matPrices} onPricesChange={setMatPrices} clients={clients}
+        onUpdateOrder={(id, updates) => setClients(p => p.map(c => c.id === id ? { ...c, ...updates } : c))}/>}
 
       {mode==='plan'&&<>
         <div style={card}>
@@ -732,9 +726,7 @@ export default function App() {
           const cAtCap=complexCapPct>=100, cNear=complexCapPct>=85;
           const sCol=sAtCap?'#b91c1c':sNear?'#92400e':'#166534';
           const cCol=cAtCap?'#b91c1c':cNear?'#92400e':'#166534';
-
           return (<>
-            {/* Simple stream capacity */}
             <div style={{...card,borderTop:'3px solid #1D9E75',borderColor:sAtCap?'#dc2626':sNear?'#d97706':'#ddd',background:sAtCap?'#fef2f2':sNear?'#fffbeb':'#fff'}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
                 <div>
@@ -758,8 +750,6 @@ export default function App() {
               {simpleClients.map(cl=><ClientOrderCard key={cl.id} cl={cl} status={getOrderStatus(cl)} uCl={uCl} uQty={uQty} uB={uB} setClients={setClients} delCl={delCl} UNIT_TYPES={UNIT_TYPES} QTYS={QTYS} inp={inp} btn={btn} lbl={lbl}/>)}
               <button onClick={addSimpleClient} style={{...btn,borderColor:'#1D9E7544',color:'#1D9E75',padding:'6px 14px',fontSize:12}}>+ Add simple order</button>
             </div>
-
-            {/* Complex stream capacity */}
             <div style={{...card,borderTop:'3px solid #7F77DD',borderColor:cAtCap?'#dc2626':cNear?'#d97706':'#ddd',background:cAtCap?'#fef2f2':cNear?'#fffbeb':'#fff'}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
                 <div>

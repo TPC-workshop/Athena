@@ -659,20 +659,6 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   const initialLoadDone = useRef(false);
   const ensureMonthsRan = useRef(false);
 
-  // ── Conflict-safe save tracking ──────────────────────────────────────────
-  // Athena only loads /api/queue-state once per page load (see the effect
-  // below). If a tab is left open, its in-memory copy of the queue goes
-  // stale — and blindly pushing that stale copy back on every edit used to
-  // silently overwrite anything anyone else had changed elsewhere in the
-  // meantime (e.g. a portal token generated in another tab reverting back
-  // to blank). These three refs let every save re-fetch the current server
-  // state and apply only the fields we actually touched on top of it,
-  // instead of overwriting everything wholesale.
-  const pendingChangesRef = useRef({});  // { orderId: { field: value, ... } } — accumulated since our last successful save
-  const pendingRemovalsRef = useRef(new Set()); // order ids removed/completed locally since our last successful save — must not be resurrected by a stale server fetch
-  const baselineRef = useRef(null);      // last full queue state we know is on the server, used to tell "we changed this" from "someone else changed this"
-  const skipNextSaveRef = useRef(false); // set right after we reconcile+save, so writing the reconciled result back into state doesn't itself trigger another save
-
   const [simpleOrders, setSimpleOrders] = useState([]);
   const [complexOrders, setComplexOrders] = useState([]);
   const [financeOrders, setFinanceOrders] = useState([]);
@@ -708,7 +694,6 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
       if (queue.queueTeam && queue.queueTeam.length) setQueueTeam(queue.queueTeam);
       if (queue.mgmtOverhead !== undefined) setMgmtOverhead(queue.mgmtOverhead);
       if (queue.wsOverhead !== undefined) setWsOverhead(queue.wsOverhead);
-      baselineRef.current = queue;
       initialLoadDone.current = true;
       setLoading(false);
     }).catch(() => { initialLoadDone.current = true; setLoading(false); });
@@ -718,105 +703,11 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   triggerSave.current = async () => {
     clearTimeout(saveTimer.current);
     setSaveMsg('Saving…');
-    // Stamp each order with its currently-computed projectedMonth + usedFrac before saving.
-    // These are normally ephemeral (recalculated on every render from the calendar/team
-    // capacity), but comms.html has no access to that scheduling engine — so we persist
-    // the *result* here to give it the same lead-time-aware stage recommendation Athena
-    // uses, instead of comms falling back to its own flat days-waited heuristic.
-    const stampSchedule = (orders, scheduled) => orders.map(o => {
-      const sc = scheduled.find(s => s.id === o.id);
-      if (!sc) return o;
-      return { ...o, projectedMonth: sc.projectedMonth, usedFrac: sc.usedFrac };
-    });
-    const stampedSimple = stampSchedule(simpleOrders, scheduledSimple);
-    const stampedComplex = stampSchedule(complexOrders, scheduledComplex);
-
     saveTimer.current = setTimeout(async () => {
       setSaving(true);
-
-      // ── Conflict-safe merge ─────────────────────────────────────────────
-      // Fetch whatever is on the server RIGHT NOW, use it as the base for
-      // every order, and only overlay the specific fields we know we changed
-      // (tracked in pendingChangesRef since our last successful save). This
-      // means a stale tab can no longer wipe a token/stage/message someone
-      // else set — the worst it can do is re-apply its own edits on top of
-      // the latest data, instead of blowing the latest data away entirely.
-      const patches = pendingChangesRef.current;
-      pendingChangesRef.current = {}; // any edits made during the fetch below land safely in the new object
-      const removedIds = pendingRemovalsRef.current;
-      pendingRemovalsRef.current = new Set(); // any removals made during the fetch below land safely in the new set
-
-      let fresh = null;
-      try {
-        fresh = await apiLoadQueue();
-      } catch {
-        fresh = null; // couldn't verify — fall back to saving our local copy as-is below
-      }
-
-      const mergeOrders = (localArr, freshArr) => {
-        if (!freshArr) return localArr;
-        const freshById = new Map(freshArr.map(o => [o.id, o]));
-        const localIds = new Set(localArr.map(o => o.id));
-        const merged = localArr.map(o => {
-          const freshOrder = freshById.get(o.id);
-          const base = freshOrder || o; // prefer the server's current copy — nothing we didn't touch gets lost
-          const patch = patches[o.id];
-          return patch ? { ...base, ...patch } : { ...base };
-        });
-        // Keep any order added elsewhere since our last load that we don't know about yet —
-        // but never resurrect one we just completed/removed locally, even if the server
-        // copy we fetched hasn't caught up with that removal yet.
-        freshArr.forEach(o => { if (!localIds.has(o.id) && !removedIds.has(o.id)) merged.push(o); });
-        return merged;
-      };
-
-      const mergedSimple = mergeOrders(stampedSimple, fresh?.simpleOrders);
-      const mergedComplex = mergeOrders(stampedComplex, fresh?.complexOrders);
-      const mergedFinance = mergeOrders(financeOrders, fresh?.financeOrders);
-
-      // Global/scalar settings: our local value wins if we changed it since our last known
-      // baseline; otherwise take the fresh server value in case someone else changed it there.
-      const reconcile = (key, localVal) => {
-        const baselineVal = baselineRef.current ? baselineRef.current[key] : undefined;
-        const freshVal = fresh ? fresh[key] : undefined;
-        const changedLocally = JSON.stringify(localVal) !== JSON.stringify(baselineVal);
-        return (changedLocally || freshVal === undefined) ? localVal : freshVal;
-      };
-
-      const finalQCount = Math.max(reconcile('qCount', qCount) || 0, fresh?.qCount || 0, qCount);
-      const finalCalendarMonths = reconcile('calendarMonths', calendarMonths);
-      const finalOvertimePool = reconcile('overtimePool', overtimePool);
-      const finalComplexThreshold = reconcile('complexThreshold', complexThreshold);
-      const finalQueueTeam = reconcile('queueTeam', queueTeam);
-      const finalMgmtOverhead = reconcile('mgmtOverhead', mgmtOverhead);
-      const finalWsOverhead = reconcile('wsOverhead', wsOverhead);
-
-      const finalState = {
-        simpleOrders: mergedSimple, complexOrders: mergedComplex, financeOrders: mergedFinance,
-        qCount: finalQCount, calendarMonths: finalCalendarMonths, overtimePool: finalOvertimePool,
-        complexThreshold: finalComplexThreshold, queueTeam: finalQueueTeam,
-        mgmtOverhead: finalMgmtOverhead, wsOverhead: finalWsOverhead,
-      };
-
-      await apiSaveQueue(finalState);
-      baselineRef.current = finalState;
-
-      // Reflect the reconciled truth back into local state so the next edit builds on
-      // top of what's actually saved, not a copy that might already be out of date.
-      skipNextSaveRef.current = true;
-      setSimpleOrders(mergedSimple);
-      setComplexOrders(mergedComplex);
-      setFinanceOrders(mergedFinance);
-      if (finalCalendarMonths !== calendarMonths) setCalendarMonths(finalCalendarMonths);
-      if (finalOvertimePool !== overtimePool) setOvertimePool(finalOvertimePool);
-      if (finalComplexThreshold !== complexThreshold) setComplexThreshold(finalComplexThreshold);
-      if (finalQueueTeam !== queueTeam) setQueueTeam(finalQueueTeam);
-      if (finalMgmtOverhead !== mgmtOverhead) setMgmtOverhead(finalMgmtOverhead);
-      if (finalWsOverhead !== wsOverhead) setWsOverhead(finalWsOverhead);
-      if (finalQCount !== qCount) setQCount(finalQCount);
-
+      await apiSaveQueue({ simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexThreshold, queueTeam, mgmtOverhead, wsOverhead });
       setSaving(false);
-      setSaveMsg(fresh ? '✓ Saved' : '⚠ Saved (could not verify latest — check connection)');
+      setSaveMsg('✓ Saved');
       setTimeout(() => setSaveMsg(''), 3000);
     }, 1500);
   };
@@ -824,7 +715,6 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   useEffect(() => {
     if (!authed || loading || !initialLoadDone.current) return;
     if (ensureMonthsRan.current) { ensureMonthsRan.current = false; return; }
-    if (skipNextSaveRef.current) { skipNextSaveRef.current = false; return; }
     triggerSave.current();
   }, [simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexThreshold, queueTeam, mgmtOverhead, wsOverhead]);
 
@@ -867,6 +757,21 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     });
   }
 
+  function getPersonHolidayHrs(member, month) {
+    // If actual holiday days entered for this person this month, use that
+    // Otherwise fall back to 10.77% accrual
+    const entered = month.holiday && month.holiday[member.id];
+    if (entered !== undefined && entered !== '') {
+      return (parseFloat(entered) || 0) * (parseFloat(member.stdDay) || 7);
+    }
+    // Accrual: 10.77% of hours actually worked this month
+    const wd = month.workingDays !== undefined ? parseInt(month.workingDays) : 21;
+    const dpw = parseFloat(member.daysPerWeek) || 5;
+    const daysWorked = wd * dpw / 5;
+    const gross = (parseFloat(member.stdDay) || 7) * daysWorked;
+    return gross * 0.1077;
+  }
+
   function getMonthStreamMins(stream, month) {
     const wd = month.workingDays !== undefined ? parseInt(month.workingDays) : 21;
     if (wd === 0) return 0;
@@ -877,8 +782,8 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
       const stdDay = parseFloat(m.stdDay) || 7;
       const daysWorked = wd * dpw / 5;
       const gross = stdDay * daysWorked;
-      const holiday = gross * 0.1077;
-      totalMins += Math.max(0, gross - holiday) * 60;
+      const holidayHrs = getPersonHolidayHrs(m, month);
+      totalMins += Math.max(0, gross - holidayHrs) * 60;
     }
     const dayFrac = wd / 21;
     if (stream === 'simple') totalMins -= (parseFloat(wsOverhead) || 0) * 60 * dayFrac;
@@ -974,19 +879,12 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     if (stream === 'simple') setSimpleOrders(p => p.map(o => o.id === id ? { ...o, ...updates } : o));
     else if (stream === 'complex') setComplexOrders(p => p.map(o => o.id === id ? { ...o, ...updates } : o));
     else if (stream === 'finance') setFinanceOrders(p => p.map(o => o.id === id ? { ...o, ...updates } : o));
-    // Track exactly which fields we changed, so the next save can overlay just
-    // these on top of the freshest server copy instead of overwriting everything.
-    pendingChangesRef.current[id] = { ...pendingChangesRef.current[id], ...updates };
   }
 
   function removeOrder(stream, id) {
     if (stream === 'simple') setSimpleOrders(p => p.filter(o => o.id !== id));
     else if (stream === 'complex') setComplexOrders(p => p.filter(o => o.id !== id));
     else setFinanceOrders(p => p.filter(o => o.id !== id));
-    // Remember this removal so a save that races with a stale server fetch
-    // doesn't add the completed/deleted order back in (see pendingRemovalsRef).
-    pendingRemovalsRef.current.add(id);
-    delete pendingChangesRef.current[id];
   }
 
   function moveUp(stream, idx) {
@@ -1178,23 +1076,40 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
                         − 1 day
                       </button>
                     </div>
-                    {(() => {
-                      const wd2 = m.workingDays !== undefined ? parseInt(m.workingDays) : 21;
-                      let totalAccrual = 0;
-                      queueTeam.forEach(tm => {
-                        const dpw = parseFloat(tm.daysPerWeek) || 5;
-                        const stdDay = parseFloat(tm.stdDay) || 7;
-                        const daysWorked = wd2 * dpw / 5;
-                        const gross = stdDay * daysWorked;
-                        totalAccrual += gross * 0.1077;
-                      });
-                      return (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', background: '#f5f4f0', borderRadius: 4 }}>
-                          <span style={{ fontSize: 10, color: '#bbb' }}>Holiday accrual (auto-calculated):</span>
-                          <span style={{ fontSize: 12, color: '#aaa', fontWeight: 'bold' }}>{totalAccrual.toFixed(1)}h</span>
-                        </div>
-                      );
-                    })()}
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ fontSize: 10, color: '#aaa', marginBottom: 5 }}>Holiday days off this month — leave blank to use accrual:</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {queueTeam.map(tm => {
+                          const wd2 = m.workingDays !== undefined ? parseInt(m.workingDays) : 21;
+                          const dpw = parseFloat(tm.daysPerWeek) || 5;
+                          const stdDay = parseFloat(tm.stdDay) || 7;
+                          const daysWorked = wd2 * dpw / 5;
+                          const gross = stdDay * daysWorked;
+                          const accrualHrs = gross * 0.1077;
+                          const enteredDays = m.holiday && m.holiday[tm.id];
+                          const streamColors = { simple: '#1D9E75', complex: '#7F77DD', overhead: '#BA7517' };
+                          const col = streamColors[tm.stream] || '#888';
+                          return (
+                            <div key={tm.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <Dot c={col} s={6} />
+                              <span style={{ fontSize: 11, color: '#555', minWidth: 90 }}>{tm.name}</span>
+                              <input type="number" min="0" max="31" step="0.5"
+                                placeholder={`accrual ${accrualHrs.toFixed(1)}h`}
+                                value={enteredDays !== undefined && enteredDays !== '' ? enteredDays : ''}
+                                onChange={e => setCalendarMonths(p => p.map(x => x.label === m.label ? {
+                                  ...x, holiday: { ...x.holiday, [tm.id]: e.target.value === '' ? undefined : parseFloat(e.target.value) || 0 }
+                                } : x))}
+                                style={{ width: 72, padding: '2px 6px', border: '0.5px solid #ccc', borderRadius: 3, fontFamily: 'Georgia,serif', fontSize: 13 }} />
+                              <span style={{ fontSize: 10, color: enteredDays !== undefined && enteredDays !== '' ? '#555' : '#bbb', fontStyle: enteredDays !== undefined && enteredDays !== '' ? 'normal' : 'italic' }}>
+                                {enteredDays !== undefined && enteredDays !== ''
+                                  ? `${((parseFloat(enteredDays)||0) * stdDay).toFixed(1)}h off`
+                                  : `auto ${accrualHrs.toFixed(1)}h`}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 );
               })}

@@ -288,6 +288,8 @@ export default function App() {
   const [newMgmtExtra, setNewMgmtExtra] = useState({n:'',m:30});
   const [activeSheet, setActiveSheet] = useState(null);
 
+  const [selectedQueueOrders, setSelectedQueueOrders] = useState([]);
+
   // Materials prices state
   const [matPrices, setMatPrices] = useState({
     mdf18: 0, mdf9: 0, oak18: 0, oak9: 0, worktop: 0,
@@ -564,10 +566,9 @@ export default function App() {
         <span style={{fontSize:11,color:saving?'#888':saveMsg.startsWith('✓')?'#166534':'#bbb'}}>{saveMsg||'Auto-saves to cloud'}</span>
       </div>
 
-      {mode==='queue'&&<Queue activeKeys={activeKeys} workingDays={workingDays} mgmtOverheadBudget={mgmtOverheadBudget} wsOverheadBudget={wsOverheadBudget}/>}
+      {mode==='queue'&&<Queue activeKeys={activeKeys} workingDays={workingDays} mgmtOverheadBudget={mgmtOverheadBudget} wsOverheadBudget={wsOverheadBudget} matPrices={matPrices} onSelectedOrdersChange={setSelectedQueueOrders}/>}
 
-      {mode==='materials'&&<Materials prices={matPrices} onPricesChange={setMatPrices} clients={clients}
-        onUpdateOrder={(id, updates) => setClients(p => p.map(c => c.id === id ? { ...c, ...updates } : c))}/>}
+      {mode==='materials'&&<Materials prices={matPrices} onPricesChange={setMatPrices} selectedOrders={selectedQueueOrders}/>}
 
       {mode==='plan'&&<>
         <div style={card}>

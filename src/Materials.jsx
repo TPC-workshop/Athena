@@ -60,10 +60,11 @@ export function calcOrderMaterials(order, prices) {
     }
   }
 
-  // ── Paint by width ────────────────────────────────────────────────────────
-  if (!isWaxed && W > 0) {
-    if (W <= 1000) items.push({ label: 'Paint 1L', cost: p.paint1L||0 });
-    else if (W <= 3000) items.push({ label: 'Paint 2.5L', cost: p.paint2_5L||0 });
+  // ── Paint by largest dimension (width or height) ──────────────────────────
+  if (!isWaxed && (W > 0 || H > 0)) {
+    const paintRef = Math.max(W, H);
+    if (paintRef <= 1000) items.push({ label: 'Paint 1L', cost: p.paint1L||0 });
+    else if (paintRef <= 3000) items.push({ label: 'Paint 2.5L', cost: p.paint2_5L||0 });
     else items.push({ label: 'Paint 5L', cost: p.paint5L||0 });
   }
 

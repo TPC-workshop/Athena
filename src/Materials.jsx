@@ -6,8 +6,8 @@ const STRIP_L = 2400;
 
 // ── Maps actual QTYS keys from data.js to component/hardware rules ────────────
 const QTY_HARDWARE = {
-  draw:    { component: 'drawer',      hardware: { runner: 1 } },
-  hdoor:   { component: 'hingedDoor',  hardware: { doorHinge: 1 } },
+  draw:    { component: 'drawer',      hardware: { runner: 1, handle: 1 } },
+  hdoor:   { component: 'hingedDoor',  hardware: { doorHinge: 1, jwlLatch: 1 } },
   sdoor:   { component: 'slidingDoor', hardware: { handle: 1 } },
   udoor:   { component: 'upOverDoor',  hardware: { jwlLatch: 2, boltLatch: 2 } },
   shaker:  { component: 'shakerDoor',  hardware: { handle: 1, shakerHinge: 1 } },
@@ -98,6 +98,9 @@ export function calcOrderMaterials(order, prices) {
   }
 
   // ── Bespoke materials ─────────────────────────────────────────────────────
+  for (const b of (order.bespoke || [])) {
+    if (b.desc && (parseFloat(b.cost)||0) > 0) items.push({ label: b.desc + ' (bespoke)', cost: parseFloat(b.cost)||0, bespoke: true });
+  }
   for (const b of (order.bespokeMaterials || [])) {
     if (b.desc && (parseFloat(b.cost)||0) > 0) items.push({ label: b.desc, cost: parseFloat(b.cost)||0, bespoke: true });
   }
@@ -271,7 +274,7 @@ export default function Materials({ prices, onPricesChange, selectedOrders }) {
             ['dogDivide','Dog divide'],
           ]}/>
           <div style={{ fontSize:11, color:'#aaa', fontStyle:'italic', marginTop:4 }}>
-            Prices save automatically. Every unit gets 2.7 bars + Hammerite + consumables. Hardware auto-added: drawer→runner, hinged door→door hinge, sliding door→handle, up&amp;over→2×JWL+2×bolt, shaker→handle+shaker hinge, dog divide→bolt latch.
+            Prices save automatically. Every unit gets 2.7 bars + Hammerite + consumables. Hardware auto-added: drawer→runner+handle, hinged door→door hinge+JWL latch, sliding door→handle, up&amp;over→2×JWL+2×bolt, shaker→handle+shaker hinge, dog divide→bolt latch.
           </div>
         </div>
       )}

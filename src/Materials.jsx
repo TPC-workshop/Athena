@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-const WORKTOP_D = 636;
+const WORKTOP_D = 650;
 const WORKTOP_L = 3000;
 const STRIP_L = 2400;
 

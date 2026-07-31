@@ -559,14 +559,23 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
                 mat £{matCost.total.toFixed(2)}
               </span>
             )}
-            {/* Sale price */}
+            {/* Sale price + VAT toggle */}
             <label style={{ fontSize:11, color:'#aaa', whiteSpace:'nowrap', marginLeft:4 }}>Sale £</label>
             <input type="number" value={order.salePrice||''} min="0" step="1" placeholder="0"
               onChange={e => onUpdate && onUpdate(order.id, { salePrice: parseFloat(e.target.value)||0 })}
-              style={{ width:72, padding:'2px 5px', border:'0.5px solid #ddd', borderRadius:3, fontFamily:'Georgia,serif', fontSize:13, background:'#fafaf8' }}/>
+              style={{ width:72, padding:'2px 5px', border:'0.5px solid #ddd', borderRadius:3, fontFamily:'Georgia,serif', fontSize:13, background:'#fafal8' }}/>
+            <button onClick={() => onUpdate && onUpdate(order.id, { saleIncVat: !order.saleIncVat })}
+              title="Toggle VAT"
+              style={{ fontSize:10, padding:'2px 6px', borderRadius:3, cursor:'pointer', fontFamily:'Georgia,serif', whiteSpace:'nowrap',
+                border: order.saleIncVat ? '1.5px solid #7F77DD' : '0.5px solid #ddd',
+                background: order.saleIncVat ? '#7F77DD' : '#fff',
+                color: order.saleIncVat ? '#fff' : '#aaa' }}>
+              {order.saleIncVat ? 'inc. VAT' : 'ex. VAT'}
+            </button>
             {/* Gross profit */}
             {matCost && (order.salePrice > 0) && (()=>{
-              const gp = (parseFloat(order.salePrice)||0) - matCost.total;
+              const exVat = order.saleIncVat ? (parseFloat(order.salePrice)||0) / 1.2 : (parseFloat(order.salePrice)||0);
+              const gp = exVat - matCost.total;
               return <span style={{ fontSize:11, padding:'2px 7px', borderRadius:4, whiteSpace:'nowrap', fontWeight:'bold',
                 background: gp >= 0 ? '#f0fdf4' : '#fef2f2',
                 color: gp >= 0 ? '#166534' : '#b91c1c',

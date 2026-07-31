@@ -143,7 +143,10 @@ export default function Materials({ prices, onPricesChange, selectedOrders }) {
     const hrs = (o.totalHrs || 0);
     return a + hrs * (parseFloat(prices.labourRate)||0);
   }, 0);
-  const forecastSales = (selectedOrders||[]).reduce((a, o) => a + (parseFloat(o.salePrice)||0), 0);
+  const forecastSales = (selectedOrders||[]).reduce((a, o) => {
+    const raw = parseFloat(o.salePrice)||0;
+    return a + (o.saleIncVat ? raw / 1.2 : raw);
+  }, 0);
   const forecastGP = forecastSales - forecastTotal - forecastLabour;
 
   const card = { background:'#fff', border:'0.5px solid #ddd', borderRadius:8, padding:'1rem 1.25rem', marginBottom:'1rem' };
@@ -187,7 +190,8 @@ export default function Materials({ prices, onPricesChange, selectedOrders }) {
           {(selectedOrders||[]).map(order => {
             const { items, total } = calcOrderMaterials(order, prices);
             const labour = (order.totalHrs||0) * (parseFloat(prices.labourRate)||0);
-            const sale = parseFloat(order.salePrice)||0;
+            const saleRaw = parseFloat(order.salePrice)||0;
+            const sale = order.saleIncVat ? saleRaw / 1.2 : saleRaw;
             const gp = sale - total - labour;
             return (
               <div key={order.id} style={{ ...card, borderLeft:`3px solid ${order.col||'#888'}` }}>

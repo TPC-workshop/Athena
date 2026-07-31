@@ -451,13 +451,18 @@ const BuildDetailsPanel = memo(function BuildDetailsPanel({ order, onUpdate }) {
         ))}
       </div>
       <div>
-        <div style={{ fontSize: 11, color: '#888', marginBottom: 5 }}>Bespoke <span style={{ color: '#bbb' }}>— any non-standard tasks with their time</span></div>
+        <div style={{ fontSize: 11, color: '#888', marginBottom: 5 }}>Bespoke <span style={{ color: '#bbb' }}>— description · mins · £ material cost</span></div>
         {bespoke.map((b, i) => (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 65px auto', gap: 6, marginBottom: 5, alignItems: 'center' }}>
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 70px auto', gap: 6, marginBottom: 5, alignItems: 'center' }}>
             <input placeholder="e.g. Prime shaker doors" value={b.desc || ''} style={inp}
               onChange={e => setBespoke(bespoke.map((x, j) => j === i ? { ...x, desc: e.target.value } : x))} />
-            <input type="number" value={b.mins || 60} style={{ ...inp, fontSize: 14 }}
+            <input type="number" value={b.mins || 60} style={{ ...inp, fontSize: 14 }} placeholder="mins"
               onChange={e => setBespoke(bespoke.map((x, j) => j === i ? { ...x, mins: parseInt(e.target.value) || 0 } : x))} />
+            <div style={{ display:'flex', alignItems:'center', gap:2 }}>
+              <span style={{ fontSize:11, color:'#aaa' }}>£</span>
+              <input type="number" value={b.cost || ''} style={{ ...inp, fontSize: 14 }} placeholder="cost" min="0" step="0.01"
+                onChange={e => setBespoke(bespoke.map((x, j) => j === i ? { ...x, cost: parseFloat(e.target.value) || 0 } : x))} />
+            </div>
             <button onClick={() => setBespoke(bespoke.filter((_, j) => j !== i))}
               style={{ padding: '4px 8px', border: '0.5px solid #fca5a5', borderRadius: 4, background: '#fff', color: '#b91c1c', cursor: 'pointer', fontFamily: 'Georgia,serif', fontSize: 12 }}>×</button>
           </div>

@@ -17,11 +17,24 @@ async function apiLoad() {
   return r.json();
 }
 async function apiSave(data) {
-  await fetch('/api/state', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-athena-password': PASSWORD },
-    body: JSON.stringify(data),
-  });
+  // Read-merge-write: fetch current state first to avoid overwriting concurrent changes
+  // Only merge keys that this client owns (Plan state keys)
+  try {
+    const current = await apiLoad().catch(() => ({}));
+    const merged = { ...current, ...data };
+    await fetch('/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-athena-password': PASSWORD },
+      body: JSON.stringify(merged),
+    });
+  } catch {
+    // Fall back to direct save if merge fails
+    await fetch('/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-athena-password': PASSWORD },
+      body: JSON.stringify(data),
+    });
+  }
 }
 
 // Ad hoc task row — checkbox, goes grey when done

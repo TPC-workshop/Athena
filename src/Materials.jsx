@@ -173,6 +173,41 @@ export default function Materials({ prices, onPricesChange, selectedOrders }) {
               ))}
             </div>
             <div style={{ fontSize:10, color:'#aaa', marginTop:6 }}>{(selectedOrders||[]).length} order{(selectedOrders||[]).length!==1?'s':''} selected · toggle £ on queue cards to include</div>
+          {(selectedOrders||[]).length > 0 && (()=>{
+            // Count sheets needed across all selected orders
+            let mdf18 = 0, mdf9 = 0, oak18 = 0, oak9 = 0, worktops = 0;
+            for (const o of selectedOrders) {
+              const isWaxed = (o.unitType||'painted') === 'waxed';
+              const dims = o.dims || {};
+              const W = parseFloat(dims.width)||0;
+              const H = parseFloat(dims.height)||0;
+              const D = parseFloat(dims.depth)||0;
+              if (W > 0 && H > 0 && D > 0) {
+                if (isWaxed) {
+                  const oakArea = (2 * H * D) + (W * D);
+                  oak18 += Math.ceil(oakArea / (1220 * 2440));
+                  oak9 += Math.ceil((W * H) / (1220 * 2440));
+                  worktops += D > 650 ? 1 + 1/3 : 1; // surface
+                  worktops += Math.max(H, W) > 3000 ? 2 : 1; // face frame
+                } else {
+                  const mdfArea = (2 * H * D) + (W * D);
+                  mdf18 += Math.ceil(mdfArea / (1220 * 2440));
+                  mdf9 += Math.ceil((W * H) / (1220 * 2440));
+                  worktops += D > 650 ? 1 + 1/3 : 1;
+                }
+              }
+            }
+            const wtRounded = Math.ceil(worktops);
+            return (
+              <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:8 }}>
+                {mdf18 > 0 && <span style={{ fontSize:11, padding:'3px 9px', borderRadius:4, background:'#f5f4f0', border:'0.5px solid #ddd', color:'#555' }}>18mm MDF: <strong>{mdf18} sheet{mdf18!==1?'s':''}</strong></span>}
+                {mdf9 > 0 && <span style={{ fontSize:11, padding:'3px 9px', borderRadius:4, background:'#f5f4f0', border:'0.5px solid #ddd', color:'#555' }}>9mm MDF: <strong>{mdf9} sheet{mdf9!==1?'s':''}</strong></span>}
+                {oak18 > 0 && <span style={{ fontSize:11, padding:'3px 9px', borderRadius:4, background:'#f5f4f0', border:'0.5px solid #ddd', color:'#555' }}>18mm Oak laminate: <strong>{oak18} sheet{oak18!==1?'s':''}</strong></span>}
+                {oak9 > 0 && <span style={{ fontSize:11, padding:'3px 9px', borderRadius:4, background:'#f5f4f0', border:'0.5px solid #ddd', color:'#555' }}>9mm Oak laminate: <strong>{oak9} sheet{oak9!==1?'s':''}</strong></span>}
+                {wtRounded > 0 && <span style={{ fontSize:11, padding:'3px 9px', borderRadius:4, background:'#f5f4f0', border:'0.5px solid #ddd', color:'#555' }}>Oak worktops: <strong>{wtRounded}</strong></span>}
+              </div>
+            );
+          })()}
           </div>
           <div style={{ display:'flex', gap:6 }}>
             <button onClick={()=>setTab('orders')} style={{ ...btn, background:tab==='orders'?'#1a1a1a':'#fff', color:tab==='orders'?'#fff':'#888', border:'none' }}>Orders</button>

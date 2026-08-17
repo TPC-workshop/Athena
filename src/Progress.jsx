@@ -187,6 +187,41 @@ export default function Progress({ clients: propClients, clientTasks: propClient
           )}
         </div>
 
+
+        {/* Workshop status — quick view for Harry */}
+        {(workshopComplete.length > 0 || beingPainted.length > 0 || beingBuilt.length > 0) && (
+          <div style={{background:'#fff', border:'0.5px solid #ddd', borderRadius:8, padding:'1rem 1.25rem', marginBottom:'1rem'}}>
+            <div style={{fontSize:9, fontWeight:'bold', textTransform:'uppercase', letterSpacing:'0.07em', color:'#888', marginBottom:12}}>Workshop status</div>
+
+            {workshopComplete.length > 0 && (
+              <div style={{marginBottom:16}}>
+                <div style={{fontSize:11, fontWeight:'bold', color:'#166534', marginBottom:8, display:'flex', alignItems:'center', gap:6}}>
+                  <span style={{width:8, height:8, borderRadius:'50%', background:'#1D9E75', display:'inline-block'}}/> Workshop complete ({workshopComplete.length})
+                </div>
+                {workshopComplete.map(cl => <WorkshopStatusCard key={cl.id} cl={cl} statusLabel="Complete" statusColor="#1D9E75"/>)}
+              </div>
+            )}
+
+            {beingPainted.length > 0 && (
+              <div style={{marginBottom:16}}>
+                <div style={{fontSize:11, fontWeight:'bold', color:'#7F77DD', marginBottom:8, display:'flex', alignItems:'center', gap:6}}>
+                  <span style={{width:8, height:8, borderRadius:'50%', background:'#7F77DD', display:'inline-block'}}/> Being painted ({beingPainted.length})
+                </div>
+                {beingPainted.map(cl => <WorkshopStatusCard key={cl.id} cl={cl} statusLabel="Painting" statusColor="#7F77DD"/>)}
+              </div>
+            )}
+
+            {beingBuilt.length > 0 && (
+              <div style={{marginBottom:8}}>
+                <div style={{fontSize:11, fontWeight:'bold', color:'#BA7517', marginBottom:8, display:'flex', alignItems:'center', gap:6}}>
+                  <span style={{width:8, height:8, borderRadius:'50%', background:'#BA7517', display:'inline-block'}}/> Being built ({beingBuilt.length})
+                </div>
+                {beingBuilt.map(cl => <WorkshopStatusCard key={cl.id} cl={cl} statusLabel="Building" statusColor="#BA7517"/>)}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Summary */}
         {totalClients > 0 && (
           <div style={{...s.card, marginBottom:'1.5rem'}}>

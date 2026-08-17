@@ -49,8 +49,8 @@ export default function Progress({ clients: propClients, clientTasks: propClient
     if (pct >= 100) return 'complete';
     if (remaining.length > 0 && remaining.every(t => t.phase === PACK_PHASE)) return 'complete';
 
-    // Being painted: any paint phase task exists and not done (assigned or not)
-    const hasPaintTask = tasks.some(t => !t.done && PAINT_PHASES.includes(t.phase));
+    // Being painted: any paint phase task is assigned and not done
+    const hasPaintTask = tasks.some(t => !t.done && t.assignedRole && PAINT_PHASES.includes(t.phase));
     if (hasPaintTask) return 'painting';
 
     // Being built: any build phase task assigned and not done

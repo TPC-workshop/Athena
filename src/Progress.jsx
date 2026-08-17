@@ -35,32 +35,27 @@ export default function Progress({ clients: propClients, clientTasks: propClient
     Ironmongery: '#0f766e', Worktop: '#92400e', Packaging: '#555'
   };
 
-  // Detect order status from task assignments
+  const PAINT_PHASES = ['Paint process', 'Unit prep for painting', 'Face frame paint prep'];
+  const BUILD_PHASES = ['Panel & structural cutting', 'Carcass construction', 'Drawer construction', 'Door construction', 'Bars & components', 'Worktops & shelves'];
+  const PACK_PHASE = 'Packing & storage';
+
   function getWorkshopStatus(cl) {
     const tasks = clientTasks[cl.id] || [];
     if (!tasks.length) return 'queue';
     const pct = getOrderPct(cl.id);
 
-    // Complete: all done, or only packaging remaining
+    // Complete: pct 100, or only packing & storage tasks remaining
     const remaining = tasks.filter(t => !t.done);
-    const onlyPackaging = remaining.length > 0 && remaining.every(t =>
-      t.n && t.n.toLowerCase().includes('package')
-    );
-    if (pct >= 100 || onlyPackaging) return 'complete';
+    if (pct >= 100) return 'complete';
+    if (remaining.length > 0 && remaining.every(t => t.phase === PACK_PHASE)) return 'complete';
 
-    // Being painted: any paint phase task assigned and not done
-    const paintAssigned = tasks.some(t =>
-      !t.done && t.assignedRole && t.phase &&
-      (t.phase.toLowerCase().includes('paint') || t.n?.toLowerCase().includes('coat') || t.n?.toLowerCase().includes('prime'))
-    );
-    if (paintAssigned) return 'painting';
+    // Being painted: any paint phase task exists and not done (assigned or not)
+    const hasPaintTask = tasks.some(t => !t.done && PAINT_PHASES.includes(t.phase));
+    if (hasPaintTask) return 'painting';
 
-    // Being built: any build task assigned and not done
-    const buildAssigned = tasks.some(t =>
-      !t.done && t.assignedRole && t.phase &&
-      (t.phase.toLowerCase().includes('build') || t.phase.toLowerCase().includes('cut') || t.phase.toLowerCase().includes('carcass'))
-    );
-    if (buildAssigned) return 'building';
+    // Being built: any build phase task assigned and not done
+    const hasBuildTask = tasks.some(t => !t.done && BUILD_PHASES.includes(t.phase) && t.assignedRole);
+    if (hasBuildTask) return 'building';
 
     return 'queue';
   }

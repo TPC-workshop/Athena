@@ -26,6 +26,44 @@ export default function Progress({ clients: propClients, clientTasks: propClient
   const [lastUpdated, setLastUpdated] = useState(null);
   // Track which orders are manually expanded (overriding auto-minimise)
   const [expanded, setExpanded] = useState({});
+  // Delay flags — local state only, resets on refresh
+  const [delayFlags, setDelayFlags] = useState({});
+
+  const DELAY_OPTIONS = ['Materials', 'Paint', 'Bars', 'Ironmongery', 'Worktop', 'Packaging'];
+  const DELAY_COLORS = {
+    Materials: '#b91c1c', Paint: '#7F77DD', Bars: '#BA7517',
+    Ironmongery: '#0f766e', Worktop: '#92400e', Packaging: '#555'
+  };
+
+  // Detect order status from task assignments
+  function getWorkshopStatus(cl) {
+    const tasks = clientTasks[cl.id] || [];
+    if (!tasks.length) return 'queue';
+    const pct = getOrderPct(cl.id);
+
+    // Complete: all done, or only packaging remaining
+    const remaining = tasks.filter(t => !t.done);
+    const onlyPackaging = remaining.length > 0 && remaining.every(t =>
+      t.n && t.n.toLowerCase().includes('package')
+    );
+    if (pct >= 100 || onlyPackaging) return 'complete';
+
+    // Being painted: any paint phase task assigned and not done
+    const paintAssigned = tasks.some(t =>
+      !t.done && t.assignedRole && t.phase &&
+      (t.phase.toLowerCase().includes('paint') || t.n?.toLowerCase().includes('coat') || t.n?.toLowerCase().includes('prime'))
+    );
+    if (paintAssigned) return 'painting';
+
+    // Being built: any build task assigned and not done
+    const buildAssigned = tasks.some(t =>
+      !t.done && t.assignedRole && t.phase &&
+      (t.phase.toLowerCase().includes('build') || t.phase.toLowerCase().includes('cut') || t.phase.toLowerCase().includes('carcass'))
+    );
+    if (buildAssigned) return 'building';
+
+    return 'queue';
+  }
 
   useEffect(() => {
     if (isEmbedded) return;
@@ -97,6 +135,46 @@ export default function Progress({ clients: propClients, clientTasks: propClient
   const overallPct = totalClients > 0
     ? Math.round(clients.reduce((a, cl) => a + getOrderPct(cl.id), 0) / totalClients)
     : 0;
+
+  // Group clients by workshop status
+  const workshopComplete = clients.filter(cl => getWorkshopStatus(cl) === 'complete');
+  const beingPainted = clients.filter(cl => getWorkshopStatus(cl) === 'painting');
+  const beingBuilt = clients.filter(cl => getWorkshopStatus(cl) === 'building');
+
+  function WorkshopStatusCard({ cl, statusLabel, statusColor }) {
+    const pct = getOrderPct(cl.id);
+    const delay = delayFlags[cl.id];
+    const tasks = clientTasks[cl.id] || [];
+    const done = tasks.filter(t => t.done).length;
+    return (
+      <div style={{ background: '#fff', border: `0.5px solid ${statusColor}33`, borderRadius: 6, padding: '0.75rem 1rem', marginBottom: 8, borderLeft: `3px solid ${statusColor}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <Dot c={cl.col || statusColor} s={9}/>
+          <span style={{ flex: 1, fontSize: 14, fontWeight: 'bold' }}>{cl.name || 'Unnamed'}</span>
+          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, background: statusColor + '18', color: statusColor, border: `0.5px solid ${statusColor}44`, whiteSpace: 'nowrap' }}>
+            {statusLabel}
+          </span>
+          <span style={{ fontSize: 11, color: '#888' }}>{pct}% · {done}/{tasks.length} tasks</span>
+          {/* Delay dropdown */}
+          <select value={delay || ''} onChange={e => setDelayFlags(p => ({ ...p, [cl.id]: e.target.value || null }))}
+            style={{ fontSize: 11, padding: '2px 6px', border: delay ? `1.5px solid ${DELAY_COLORS[delay]||'#888'}` : '0.5px solid #ddd', borderRadius: 4, fontFamily: 'Georgia,serif', background: delay ? (DELAY_COLORS[delay]||'#888') + '18' : '#fff', color: delay ? (DELAY_COLORS[delay]||'#888') : '#aaa', cursor: 'pointer' }}>
+            <option value=''>No delay</option>
+            {DELAY_OPTIONS.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
+          {delay && (
+            <span style={{ fontSize: 11, fontWeight: 'bold', padding: '2px 8px', borderRadius: 4, background: (DELAY_COLORS[delay]||'#888') + '18', color: DELAY_COLORS[delay]||'#888', border: `1.5px solid ${DELAY_COLORS[delay]||'#888'}`, whiteSpace: 'nowrap' }}>
+              ⚠ {delay}
+            </span>
+          )}
+        </div>
+        {cl.targetDate && (
+          <div style={{ fontSize: 11, color: '#aaa', marginTop: 4, paddingLeft: 17 }}>
+            Target: {new Date(cl.targetDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div style={s.page}>

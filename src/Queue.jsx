@@ -696,12 +696,13 @@ function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo
         {activeOrders.length === 0 && completedOrders.length === 0 && <div style={{ fontSize: 12, color: '#bbb', fontStyle: 'italic', padding: '0.5rem 0' }}>No orders in this stream.</div>}
         {activeOrders.map((o, idx) => {
           const sc = scheduled.find(s => s.id === o.id);
+          const realIdx = orders.findIndex(x => x.id === o.id);
           return (
             <OrderCard key={o.id} order={o} stream={stream} idx={idx}
               projectedMonth={sc?.projectedMonth} spansMonth={sc?.spansMonth} usedFrac={sc?.usedFrac}
               color={color} matPrices={matPrices}
-              onMoveUp={() => onMoveUp(stream, idx)}
-              onMoveDown={() => onMoveDown(stream, idx)}
+              onMoveUp={() => onMoveUp(stream, realIdx)}
+              onMoveDown={() => onMoveDown(stream, realIdx)}
               onComplete={() => onComplete(stream, o.id)}
               onRemove={() => onRemove(stream, o.id)}
               onUpdate={(id, updates) => onUpdate(stream, id, updates)} />
@@ -715,12 +716,13 @@ function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo
             </button>
             {showCompleted && completedOrders.map((o, idx) => {
               const sc = scheduled.find(s => s.id === o.id);
+              const realIdx = orders.findIndex(x => x.id === o.id);
               return (
                 <OrderCard key={o.id} order={o} stream={stream} idx={activeOrders.length + idx}
                   projectedMonth={sc?.projectedMonth} spansMonth={sc?.spansMonth} usedFrac={sc?.usedFrac}
                   color="#aaa" matPrices={matPrices}
-                  onMoveUp={() => onMoveUp(stream, activeOrders.length + idx)}
-                  onMoveDown={() => onMoveDown(stream, activeOrders.length + idx)}
+                  onMoveUp={() => onMoveUp(stream, realIdx)}
+                  onMoveDown={() => onMoveDown(stream, realIdx)}
                   onComplete={() => onComplete(stream, o.id)}
                   onRemove={() => onRemove(stream, o.id)}
                   onUpdate={(id, updates) => onUpdate(stream, id, updates)} />

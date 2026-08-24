@@ -480,12 +480,12 @@ const BuildDetailsPanel = memo(function BuildDetailsPanel({ order, onUpdate }) {
 });
 
 // ── OrderCard — now includes PortalPanel ─────────────────────────────────────
-const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, spansMonth, usedFrac, color, onMoveUp, onMoveDown, onComplete, onRemove, onUpdate, matPrices }) {
+const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, spansMonth, usedFrac, color, onMoveUp, onMoveDown, onComplete, onRemove, onUpdate, matPrices, isSaving }) {
   const [showPortal, setShowPortal] = useState(false)
   const [showBuild, setShowBuild] = useState(false)
   const mins = calcOrderMins(order);
   const needsDetails = hasNoBuildDetails(order);
-  const bumpBtn = { padding: '3px 8px', border: '0.5px solid #ddd', borderRadius: 3, background: '#fff', fontFamily: 'Georgia,serif', fontSize: 11, cursor: 'pointer', color: '#555' };
+  const bumpBtn = { padding: '3px 8px', border: '0.5px solid #ddd', borderRadius: 3, background: isSaving ? '#f5f4f0' : '#fff', fontFamily: 'Georgia,serif', fontSize: 11, cursor: isSaving ? 'not-allowed' : 'pointer', color: isSaving ? '#ccc' : '#555', opacity: isSaving ? 0.5 : 1 };
   const btn = { padding: '8px 16px', border: '0.5px solid #999', borderRadius: 4, background: '#fff', fontFamily: 'Georgia,serif', fontSize: 13, cursor: 'pointer' };
   const tp = order.touchpoints || {}
   const tpDone = TOUCHPOINTS.filter(t => tp[t.key]).length
@@ -495,8 +495,8 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
     <div style={{ background: '#fff', border: '0.5px solid #ddd', borderRadius: 6, padding: '0.75rem 1rem', marginBottom: 8, borderLeft: `3px solid ${color}` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <button onClick={onMoveUp} style={bumpBtn}>▲</button>
-          <button onClick={onMoveDown} style={bumpBtn}>▼</button>
+          <button onClick={onMoveUp} disabled={isSaving} style={bumpBtn}>▲</button>
+          <button onClick={onMoveDown} disabled={isSaving} style={bumpBtn}>▼</button>
         </div>
         <span style={{ fontSize: 12, color: '#aaa', minWidth: 22, textAlign: 'center' }}>#{idx + 1}</span>
         <span style={{ flex: 1, fontSize: 14, fontWeight: 'bold', minWidth: 120 }}>{order.name || 'Unnamed'}</span>
@@ -662,7 +662,7 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
   );
 });
 
-function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo, setAddingTo, onAdd, onMoveUp, onMoveDown, onComplete, onRemove, onUpdate, complexThreshold, matPrices }) {
+function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo, setAddingTo, onAdd, onMoveUp, onMoveDown, onComplete, onRemove, onUpdate, complexThreshold, matPrices, isSaving }) {
   const activeOrders = orders.filter(o => (parseFloat(o.pctDone)||0) < 100);
   const completedOrders = orders.filter(o => (parseFloat(o.pctDone)||0) >= 100);
   const totalMins = orders.reduce((a, o) => a + calcOrderMins(o), 0);
@@ -700,7 +700,7 @@ function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo
           return (
             <OrderCard key={o.id} order={o} stream={stream} idx={idx}
               projectedMonth={sc?.projectedMonth} spansMonth={sc?.spansMonth} usedFrac={sc?.usedFrac}
-              color={color} matPrices={matPrices}
+              color={color} matPrices={matPrices} isSaving={isSaving}
               onMoveUp={() => onMoveUp(stream, o.id)}
               onMoveDown={() => onMoveDown(stream, o.id)}
               onComplete={() => onComplete(stream, o.id)}
@@ -720,7 +720,7 @@ function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo
               return (
                 <OrderCard key={o.id} order={o} stream={stream} idx={activeOrders.length + idx}
                   projectedMonth={sc?.projectedMonth} spansMonth={sc?.spansMonth} usedFrac={sc?.usedFrac}
-                  color="#aaa" matPrices={matPrices}
+                  color="#aaa" matPrices={matPrices} isSaving={isSaving}
                   onMoveUp={() => onMoveUp(stream, o.id)}
                   onMoveDown={() => onMoveDown(stream, o.id)}
                   onComplete={() => onComplete(stream, o.id)}
@@ -794,12 +794,11 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     clearTimeout(saveTimer.current);
     setSaveMsg('Saving…');
     saveTimer.current = setTimeout(async () => {
-      setSaving(true);
       await apiSaveQueue({ simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexThreshold, queueTeam, mgmtOverhead, wsOverhead });
       setSaving(false);
       setSaveMsg('✓ Saved');
       setTimeout(() => setSaveMsg(''), 3000);
-    }, 1500);
+    }, 800);
   };
 
   useEffect(() => {
@@ -1305,13 +1304,13 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
           orders={simpleOrders} scheduled={scheduledSimple} lead={simpleLead}
           addingTo={addingTo} setAddingTo={setAddingTo}
           onAdd={addOrder} onMoveUp={moveUp} onMoveDown={moveDown}
-          onComplete={removeOrder} onRemove={removeOrder} onUpdate={updateOrder} complexThreshold={complexThreshold} matPrices={matPrices}/>
+          onComplete={removeOrder} onRemove={removeOrder} onUpdate={updateOrder} complexThreshold={complexThreshold} matPrices={matPrices} isSaving={saving}/>
 
         <StreamSection title="Complex builds" color="#7F77DD" stream="complex"
           orders={complexOrders} scheduled={scheduledComplex} lead={complexLead}
           addingTo={addingTo} setAddingTo={setAddingTo}
           onAdd={addOrder} onMoveUp={moveUp} onMoveDown={moveDown}
-          onComplete={removeOrder} onRemove={removeOrder} onUpdate={updateOrder} complexThreshold={complexThreshold} matPrices={matPrices}/>
+          onComplete={removeOrder} onRemove={removeOrder} onUpdate={updateOrder} complexThreshold={complexThreshold} matPrices={matPrices} isSaving={saving}/>
 
         {/* Finance stream — unchanged */}
         <div style={{ background: '#fff', border: '0.5px solid #ddd', borderRadius: 8, marginBottom: '1rem', borderTop: '3px solid #BA7517', overflow: 'hidden' }}>

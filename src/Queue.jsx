@@ -701,8 +701,8 @@ function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo
             <OrderCard key={o.id} order={o} stream={stream} idx={idx}
               projectedMonth={sc?.projectedMonth} spansMonth={sc?.spansMonth} usedFrac={sc?.usedFrac}
               color={color} matPrices={matPrices}
-              onMoveUp={() => onMoveUp(stream, realIdx)}
-              onMoveDown={() => onMoveDown(stream, realIdx)}
+              onMoveUp={() => onMoveUp(stream, o.id)}
+              onMoveDown={() => onMoveDown(stream, o.id)}
               onComplete={() => onComplete(stream, o.id)}
               onRemove={() => onRemove(stream, o.id)}
               onUpdate={(id, updates) => onUpdate(stream, id, updates)} />
@@ -721,8 +721,8 @@ function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo
                 <OrderCard key={o.id} order={o} stream={stream} idx={activeOrders.length + idx}
                   projectedMonth={sc?.projectedMonth} spansMonth={sc?.spansMonth} usedFrac={sc?.usedFrac}
                   color="#aaa" matPrices={matPrices}
-                  onMoveUp={() => onMoveUp(stream, realIdx)}
-                  onMoveDown={() => onMoveDown(stream, realIdx)}
+                  onMoveUp={() => onMoveUp(stream, o.id)}
+                  onMoveDown={() => onMoveDown(stream, o.id)}
                   onComplete={() => onComplete(stream, o.id)}
                   onRemove={() => onRemove(stream, o.id)}
                   onUpdate={(id, updates) => onUpdate(stream, id, updates)} />
@@ -990,14 +990,26 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     else setFinanceOrders(p => p.filter(o => o.id !== id));
   }
 
-  function moveUp(stream, idx) {
+  function moveUp(stream, id) {
     const setter = stream === 'simple' ? setSimpleOrders : stream === 'complex' ? setComplexOrders : setFinanceOrders;
-    setter(p => { if (idx === 0) return p; const n = [...p]; [n[idx - 1], n[idx]] = [n[idx], n[idx - 1]]; return n; });
+    setter(p => {
+      const idx = p.findIndex(o => o.id === id);
+      if (idx <= 0) return p;
+      const n = [...p];
+      [n[idx - 1], n[idx]] = [n[idx], n[idx - 1]];
+      return n;
+    });
   }
 
-  function moveDown(stream, idx) {
+  function moveDown(stream, id) {
     const setter = stream === 'simple' ? setSimpleOrders : stream === 'complex' ? setComplexOrders : setFinanceOrders;
-    setter(p => { if (idx === p.length - 1) return p; const n = [...p]; [n[idx], n[idx + 1]] = [n[idx + 1], n[idx]]; return n; });
+    setter(p => {
+      const idx = p.findIndex(o => o.id === id);
+      if (idx < 0 || idx === p.length - 1) return p;
+      const n = [...p];
+      [n[idx], n[idx + 1]] = [n[idx + 1], n[idx]];
+      return n;
+    });
   }
 
   function exportBackup() {

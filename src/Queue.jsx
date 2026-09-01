@@ -665,6 +665,8 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
 function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo, setAddingTo, onAdd, onMoveUp, onMoveDown, onComplete, onRemove, onUpdate, complexThreshold, matPrices, isSaving }) {
   const activeOrders = orders.filter(o => (parseFloat(o.pctDone)||0) < 100);
   const completedOrders = orders.filter(o => (parseFloat(o.pctDone)||0) >= 100);
+  const activeOrders = orders.filter(o => (parseFloat(o.pctDone)||0) < 100);
+  const completedOrders = orders.filter(o => (parseFloat(o.pctDone)||0) >= 100);
   const totalMins = orders.reduce((a, o) => a + calcOrderMins(o), 0);
   const [showCompleted, setShowCompleted] = useState(false);
   const btn = { padding: '8px 16px', border: '0.5px solid #999', borderRadius: 4, background: '#fff', fontFamily: 'Georgia,serif', fontSize: 13, cursor: 'pointer' };
@@ -1118,8 +1120,8 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: '1rem' }}>
           {[
-            ['Simple', (simpleLead !== null && !isNaN(simpleLead)) ? `${simpleLead}w` : '—', '#1D9E75', `${simpleOrders.length} order${simpleOrders.length !== 1 ? 's' : ''}`],
-            ['Complex', (complexLead !== null && !isNaN(complexLead)) ? `${complexLead}w` : '—', '#7F77DD', `${complexOrders.length} order${complexOrders.length !== 1 ? 's' : ''}`],
+            ['Simple', (simpleLead !== null && !isNaN(simpleLead)) ? `${simpleLead}w` : '—', '#1D9E75', `${simpleOrders.filter(o => (parseFloat(o.pctDone)||0) < 100).length} order${simpleOrders.filter(o => (parseFloat(o.pctDone)||0) < 100).length !== 1 ? 's' : ''}`],
+            ['Complex', (complexLead !== null && !isNaN(complexLead)) ? `${complexLead}w` : '—', '#7F77DD', `${complexOrders.filter(o => (parseFloat(o.pctDone)||0) < 100).length} order${complexOrders.filter(o => (parseFloat(o.pctDone)||0) < 100).length !== 1 ? 's' : ''}`],
             ['Finance', financeOrders.length ? `${financeOrders.length}` : '—', '#BA7517', `${(financeTotal / 60).toFixed(1)}h`],
           ].map(([l, v, c, sub]) => (
             <div key={l} style={{ background: '#fff', border: `0.5px solid ${c}44`, borderRadius: 8, padding: '0.75rem', borderTop: `3px solid ${c}`, minWidth: 0 }}>

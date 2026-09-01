@@ -757,6 +757,8 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   const [overtimePool, setOvertimePool] = useState(0);
   const [complexThreshold, setComplexThreshold] = useState(30);
   const [addingTo, setAddingTo] = useState(null);
+  const [zohoSyncing, setZohoSyncing] = useState(false);
+  const [zohoSyncMsg, setZohoSyncMsg] = useState('');
   const [expandedMonths, setExpandedMonths] = useState(false);
 
   const [queueTeam, setQueueTeam] = useState([
@@ -967,6 +969,36 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
   const financeTotal = financeOrders.reduce((a, o) => a + calcOrderMins(o), 0);
   const overtimeMins = (parseFloat(overtimePool) || 0) * 60;
 
+  async function syncFromZoho() {
+    setZohoSyncing(true);
+    setZohoSyncMsg('Syncing from Zoho…');
+    try {
+      const r = await fetch('/api/zoho-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-athena-password': API_PASSWORD },
+      });
+      const data = await r.json();
+      if (data.ok) {
+        const msg = data.added > 0
+          ? `✓ ${data.added} new order${data.added !== 1 ? 's' : ''} added: ${data.addedNames.join(', ')} · ${data.skipped} already in queue`
+          : `✓ All ${data.skipped} Workshop Process deals already in queue`;
+        setZohoSyncMsg(msg);
+        if (data.added > 0) {
+          const queue = await apiLoadQueue();
+          if (queue.simpleOrders) setSimpleOrders(queue.simpleOrders);
+          if (queue.complexOrders) setComplexOrders(queue.complexOrders);
+          if (queue.qCount) setQCount(queue.qCount);
+        }
+      } else {
+        setZohoSyncMsg('⚠ Sync failed: ' + (data.error || 'Unknown error'));
+      }
+    } catch (e) {
+      setZohoSyncMsg('⚠ ' + e.message);
+    }
+    setZohoSyncing(false);
+    setTimeout(() => setZohoSyncMsg(''), 8000);
+  }
+
   function addOrder(stream, order) {
     const id = `q${qCount}`;
     const full = { ...order, id };
@@ -1063,7 +1095,11 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
           <div style={{ fontSize: 11, color: saving ? '#888' : saveMsg.startsWith('✓') ? '#166634' : '#bbb', marginTop: 6 }}>
             {saveMsg || 'Auto-saves to cloud'}
           </div>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 10 }}>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 10, flexWrap: 'wrap' }}>
+            <button onClick={syncFromZoho} disabled={zohoSyncing}
+              style={{ padding: '5px 14px', border: '0.5px solid #7F77DD', borderRadius: 4, background: zohoSyncing ? '#f5f4f0' : '#f5f3ff', color: zohoSyncing ? '#aaa' : '#7F77DD', fontFamily: 'Georgia,serif', fontSize: 11, cursor: zohoSyncing ? 'not-allowed' : 'pointer' }}>
+              {zohoSyncing ? '⟳ Syncing…' : '⟳ Sync from Zoho'}
+            </button>
             <button onClick={exportBackup}
               style={{ padding: '5px 14px', border: '0.5px solid #1D9E75', borderRadius: 4, background: '#f0fdf4', color: '#166534', fontFamily: 'Georgia,serif', fontSize: 11, cursor: 'pointer' }}>
               ↓ Export backup
@@ -1073,6 +1109,11 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
               <input type="file" accept=".json" onChange={importBackup} style={{ display: 'none' }} />
             </label>
           </div>
+          {zohoSyncMsg && (
+            <div style={{ fontSize: 11, marginTop: 6, color: zohoSyncMsg.startsWith('✓') ? '#166534' : '#b91c1c' }}>
+              {zohoSyncMsg}
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: '1rem' }}>

@@ -665,10 +665,10 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
 function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo, setAddingTo, onAdd, onMoveUp, onMoveDown, onComplete, onRemove, onUpdate, complexThreshold, matPrices, isSaving }) {
   const activeOrders = orders.filter(o => (parseFloat(o.pctDone)||0) < 100);
   const completedOrders = orders.filter(o => (parseFloat(o.pctDone)||0) >= 100);
+  const [showCompleted, setShowCompleted] = useState(false);
   const activeOrders = orders.filter(o => (parseFloat(o.pctDone)||0) < 100);
   const completedOrders = orders.filter(o => (parseFloat(o.pctDone)||0) >= 100);
   const totalMins = orders.reduce((a, o) => a + calcOrderMins(o), 0);
-  const [showCompleted, setShowCompleted] = useState(false);
   const btn = { padding: '8px 16px', border: '0.5px solid #999', borderRadius: 4, background: '#fff', fontFamily: 'Georgia,serif', fontSize: 13, cursor: 'pointer' };
 
   return (

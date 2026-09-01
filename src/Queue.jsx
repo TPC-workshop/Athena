@@ -663,8 +663,6 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
 });
 
 function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo, setAddingTo, onAdd, onMoveUp, onMoveDown, onComplete, onRemove, onUpdate, complexThreshold, matPrices, isSaving }) {
-  const activeOrders = orders.filter(o => (parseFloat(o.pctDone)||0) < 100);
-  const completedOrders = orders.filter(o => (parseFloat(o.pctDone)||0) >= 100);
   const [showCompleted, setShowCompleted] = useState(false);
   const activeOrders = orders.filter(o => (parseFloat(o.pctDone)||0) < 100);
   const completedOrders = orders.filter(o => (parseFloat(o.pctDone)||0) >= 100);
@@ -678,7 +676,7 @@ function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <Dot c={color} s={10} />
             <span style={{ fontSize: 15, fontWeight: 'bold' }}>{title}</span>
-            <span style={{ fontSize: 11, color: '#aaa' }}>{orders.length} order{orders.length !== 1 ? 's' : ''} · {(totalMins / 60).toFixed(1)}h</span>
+            <span style={{ fontSize: 11, color: '#aaa' }}>{activeOrders.length} order{activeOrders.length !== 1 ? 's' : ''} · {(totalMins / 60).toFixed(1)}h</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {lead !== null && lead !== undefined && (

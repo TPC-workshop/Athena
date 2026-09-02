@@ -796,7 +796,7 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     clearTimeout(saveTimer.current);
     setSaveMsg('Saving…');
     saveTimer.current = setTimeout(async () => {
-      await apiSaveQueue({ simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexThreshold, queueTeam, mgmtOverhead, wsOverhead });
+      await apiSaveQueue({ simpleOrders: scheduledSimple, complexOrders: scheduledComplex, financeOrders, qCount, calendarMonths, overtimePool, complexThreshold, queueTeam, mgmtOverhead, wsOverhead });
       setSaving(false);
       setSaveMsg('✓ Saved');
       setTimeout(() => setSaveMsg(''), 3000);

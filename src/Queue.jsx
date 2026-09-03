@@ -480,7 +480,7 @@ const BuildDetailsPanel = memo(function BuildDetailsPanel({ order, onUpdate }) {
 });
 
 // ── OrderCard — now includes PortalPanel ─────────────────────────────────────
-const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, spansMonth, usedFrac, color, onMoveUp, onMoveDown, onComplete, onRemove, onUpdate, matPrices, isSaving }) {
+const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, spansMonth, usedFrac, color, onMoveUp, onMoveDown, onMoveToOtherStream, onComplete, onRemove, onUpdate, matPrices, isSaving }) {
   const [showPortal, setShowPortal] = useState(false)
   const [showBuild, setShowBuild] = useState(false)
   const mins = calcOrderMins(order);
@@ -498,6 +498,11 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
           <button onClick={onMoveUp} disabled={isSaving} style={bumpBtn}>▲</button>
           <button onClick={onMoveDown} disabled={isSaving} style={bumpBtn}>▼</button>
         </div>
+        {onMoveToOtherStream && (stream === 'simple' || stream === 'complex') && (
+          <button onClick={onMoveToOtherStream} disabled={isSaving} style={bumpBtn}>
+            {stream === 'simple' ? 'Move to Complex' : 'Move to Simple'}
+          </button>
+        )}
         <span style={{ fontSize: 12, color: '#aaa', minWidth: 22, textAlign: 'center' }}>#{idx + 1}</span>
         <span style={{ flex: 1, fontSize: 14, fontWeight: 'bold', minWidth: 120 }}>{order.name || 'Unnamed'}</span>
         <span style={{ fontSize: 11, color: '#888', whiteSpace: 'nowrap' }}>{UNIT_TYPES.find(u => u.key === (order.unitType || 'painted'))?.label || 'Painted'}</span>
@@ -662,7 +667,7 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
   );
 });
 
-function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo, setAddingTo, onAdd, onMoveUp, onMoveDown, onComplete, onRemove, onUpdate, complexThreshold, matPrices, isSaving }) {
+function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo, setAddingTo, onAdd, onMoveUp, onMoveDown, onMoveToOtherStream, onComplete, onRemove, onUpdate, complexThreshold, matPrices, isSaving }) {
   const [showCompleted, setShowCompleted] = useState(false);
   const activeOrders = orders.filter(o => (parseFloat(o.pctDone)||0) < 100);
   const completedOrders = orders.filter(o => (parseFloat(o.pctDone)||0) >= 100);
@@ -703,6 +708,7 @@ function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo
               color={color} matPrices={matPrices} isSaving={isSaving}
               onMoveUp={() => onMoveUp(stream, o.id)}
               onMoveDown={() => onMoveDown(stream, o.id)}
+              onMoveToOtherStream={() => onMoveToOtherStream(stream, o.id)}
               onComplete={() => onComplete(stream, o.id)}
               onRemove={() => onRemove(stream, o.id)}
               onUpdate={(id, updates) => onUpdate(stream, id, updates)} />
@@ -723,6 +729,7 @@ function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo
                   color="#aaa" matPrices={matPrices} isSaving={isSaving}
                   onMoveUp={() => onMoveUp(stream, o.id)}
                   onMoveDown={() => onMoveDown(stream, o.id)}
+                  onMoveToOtherStream={() => onMoveToOtherStream(stream, o.id)}
                   onComplete={() => onComplete(stream, o.id)}
                   onRemove={() => onRemove(stream, o.id)}
                   onUpdate={(id, updates) => onUpdate(stream, id, updates)} />
@@ -1043,6 +1050,19 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
     });
   }
 
+  function moveToOtherStream(stream, id) {
+    const from = stream === 'simple' ? simpleOrders : complexOrders;
+    const order = from.find(o => o.id === id);
+    if (!order) return;
+    if (stream === 'simple') {
+      setSimpleOrders(p => p.filter(o => o.id !== id));
+      setComplexOrders(p => [...p, order]);
+    } else {
+      setComplexOrders(p => p.filter(o => o.id !== id));
+      setSimpleOrders(p => [...p, order]);
+    }
+  }
+
   function exportBackup() {
     const data = { simpleOrders, complexOrders, financeOrders, qCount, calendarMonths, overtimePool, complexThreshold, exportedAt: new Date().toISOString() };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1344,13 +1364,13 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
         <StreamSection title="Simple builds" color="#1D9E75" stream="simple"
           orders={simpleOrders} scheduled={scheduledSimple} lead={simpleLead}
           addingTo={addingTo} setAddingTo={setAddingTo}
-          onAdd={addOrder} onMoveUp={moveUp} onMoveDown={moveDown}
+          onAdd={addOrder} onMoveUp={moveUp} onMoveDown={moveDown} onMoveToOtherStream={moveToOtherStream}
           onComplete={removeOrder} onRemove={removeOrder} onUpdate={updateOrder} complexThreshold={complexThreshold} matPrices={matPrices} isSaving={saving}/>
 
         <StreamSection title="Complex builds" color="#7F77DD" stream="complex"
           orders={complexOrders} scheduled={scheduledComplex} lead={complexLead}
           addingTo={addingTo} setAddingTo={setAddingTo}
-          onAdd={addOrder} onMoveUp={moveUp} onMoveDown={moveDown}
+          onAdd={addOrder} onMoveUp={moveUp} onMoveDown={moveDown} onMoveToOtherStream={moveToOtherStream}
           onComplete={removeOrder} onRemove={removeOrder} onUpdate={updateOrder} complexThreshold={complexThreshold} matPrices={matPrices} isSaving={saving}/>
 
         {/* Finance stream — unchanged */}

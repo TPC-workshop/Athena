@@ -483,6 +483,7 @@ const BuildDetailsPanel = memo(function BuildDetailsPanel({ order, onUpdate }) {
 const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, spansMonth, usedFrac, color, onMoveUp, onMoveDown, onMoveToOtherStream, onComplete, onRemove, onUpdate, matPrices, isSaving }) {
   const [showPortal, setShowPortal] = useState(false)
   const [showBuild, setShowBuild] = useState(false)
+  const [showCrmNotes, setShowCrmNotes] = useState(false)
   const mins = calcOrderMins(order);
   const needsDetails = hasNoBuildDetails(order);
   const bumpBtn = { padding: '3px 8px', border: '0.5px solid #ddd', borderRadius: 3, background: isSaving ? '#f5f4f0' : '#fff', fontFamily: 'Georgia,serif', fontSize: 11, cursor: isSaving ? 'not-allowed' : 'pointer', color: isSaving ? '#ccc' : '#555', opacity: isSaving ? 0.5 : 1 };
@@ -506,6 +507,12 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
         <span style={{ fontSize: 12, color: '#aaa', minWidth: 22, textAlign: 'center' }}>#{idx + 1}</span>
         <span style={{ flex: 1, fontSize: 14, fontWeight: 'bold', minWidth: 120 }}>{order.name || 'Unnamed'}</span>
         <span style={{ fontSize: 11, color: '#888', whiteSpace: 'nowrap' }}>{UNIT_TYPES.find(u => u.key === (order.unitType || 'painted'))?.label || 'Painted'}</span>
+        {order.leadsPortalId && (
+          <span title={`Synced from The Workbench CRM — lead ${order.leadsPortalId}`}
+            style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: '#eef2ff', color: '#4338ca', border: '0.5px solid #c7d2fe', whiteSpace: 'nowrap' }}>
+            🔗 CRM
+          </span>
+        )}
         {needsDetails ? (
           <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, background: '#fffbeb', color: '#92400e', border: '0.5px solid #fcd34d', whiteSpace: 'nowrap' }}>
             ⚠ No build details yet
@@ -654,6 +661,32 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
           );
         })()}
       </div>
+
+      {/* CRM notes / confirmed design — only present on a leads-portal-synced
+          order, collapsed by default so it doesn't add height to every card */}
+      {(order.notes || order.designFileUrl) && (
+        <div style={{ marginTop: 6, paddingLeft: 4 }}>
+          <button onClick={() => setShowCrmNotes(p => !p)}
+            style={{ fontSize: 11, padding: '2px 8px', border: '0.5px solid #c7d2fe', borderRadius: 4, background: '#eef2ff', color: '#4338ca', cursor: 'pointer', fontFamily: 'Georgia,serif' }}>
+            📋 {showCrmNotes ? 'Hide' : 'Show'} notes from CRM
+          </button>
+          {showCrmNotes && (
+            <div style={{ marginTop: 6, padding: '8px 10px', background: '#fafaf8', border: '0.5px solid #eee', borderRadius: 4 }}>
+              {order.notes && (
+                <div style={{ fontSize: 12, whiteSpace: 'pre-wrap', color: '#333', marginBottom: order.designFileUrl ? 8 : 0 }}>
+                  {order.notes}
+                </div>
+              )}
+              {order.designFileUrl && (
+                <a href={order.designFileUrl} target="_blank" rel="noreferrer"
+                  style={{ fontSize: 11, color: '#1D9E75', textDecoration: 'none' }}>
+                  📎 View confirmed design (staff only — never shown to the customer)
+                </a>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {showBuild && (
         <BuildDetailsPanel order={order} onUpdate={onUpdate} />

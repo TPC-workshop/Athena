@@ -28,6 +28,14 @@ function findByLeadsPortalId(streams, leadsPortalId) {
   return null;
 }
 
+// The Workbench sends dims in millimetres as {width, height, depth} only once
+// every axis is actually known (see its own api/athena/sync.js) — never a
+// partial object. Mirrors that same all-or-nothing check here rather than
+// trusting a truthy check, since a real 0 shouldn't be treated as "missing".
+function hasDims(d) {
+  return !!d && d.width != null && d.height != null && d.depth != null;
+}
+
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -57,20 +65,30 @@ export default async function handler(req, res) {
     if (existing) {
       const { arr, idx } = existing;
       const prev = arr[idx];
-      // Only the identity/value fields are ever refreshed from leads-portal —
-      // qtys/bespoke/pctDone/portalToken/portalStage/stream are owned by Athena
-      // once the order exists, since a human may have already edited them.
+      // Identity/value fields AND the production-detail fields a sales rep
+      // reviews at Won (unitType/dims/petName/targetDate/notes/designFileUrl)
+      // are refreshed from leads-portal on every push, including a re-push
+      // from a reopen-and-reconfirm cycle — these are all plain scalar
+      // overwrites, safe to trust from the CRM every time. qtys/bespoke/
+      // pctDone/portalToken/portalStage/stream stay untouched here — those
+      // are owned by Athena once the order exists, since a human may already
+      // be mid-build against them and a resync must never reset that work.
       arr[idx] = {
         ...prev,
         name,
         salePrice: body.salePrice !== undefined ? (parseFloat(body.salePrice) || 0) : prev.salePrice,
         saleIncVat: body.saleIncVat !== undefined ? !!body.saleIncVat : prev.saleIncVat,
         orderDate: body.orderDate !== undefined ? body.orderDate : prev.orderDate,
+        unitType: body.unitType !== undefined ? body.unitType : prev.unitType,
+        petName: body.petName !== undefined ? body.petName : prev.petName,
+        targetDate: body.targetDate !== undefined ? body.targetDate : prev.targetDate,
+        dims: hasDims(body.dims) ? body.dims : prev.dims,
+        notes: body.notes !== undefined ? body.notes : prev.notes,
+        designFileUrl: body.designFileUrl !== undefined ? body.designFileUrl : prev.designFileUrl,
       };
       orderId = prev.id;
     } else {
       const bespoke = Array.isArray(body.bespoke) ? [...body.bespoke] : [];
-      if (body.notes) bespoke.push({ desc: String(body.notes), mins: 0 });
 
       orderId = `q${qCount}`;
       qCount++;
@@ -90,6 +108,18 @@ export default async function handler(req, res) {
         inMaterialsForecast: false,
         stream: 'simple',
         leadsPortalId,
+        // Production/portal detail a sales rep confirmed at Won — see
+        // leads-portal's own api/athena/sync.js for exactly what's sent and
+        // why. petName/targetDate double as real fields the customer portal
+        // (api/portal.js) already reads; dims/notes/designFileUrl are
+        // staff-facing only. All optional: an older push (or one from a lead
+        // with a field left blank) simply omits the key, same as every
+        // other field here defaults to blank rather than guessed at.
+        petName: body.petName || '',
+        targetDate: body.targetDate || '',
+        dims: hasDims(body.dims) ? body.dims : undefined,
+        notes: body.notes || '',
+        designFileUrl: body.designFileUrl || undefined,
       });
     }
 

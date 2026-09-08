@@ -41,6 +41,8 @@ function generateToken() {
 // ── Portal panel — shown inside each order card ───────────────────────────────
 // ── Stage recommendation based on days waited + total lead time ──────────────
 function recommendStage(order, projectedMonth, usedFrac) {
+  // comms-portal is authoritative for delivered orders — never suggest demoting one
+  if (order.portalStage === 'delivered') return null
   // Calculate days waited
   if (!order.orderDate) return null
   const ordered = new Date(order.orderDate)
@@ -480,7 +482,7 @@ const BuildDetailsPanel = memo(function BuildDetailsPanel({ order, onUpdate }) {
 });
 
 // ── OrderCard — now includes PortalPanel ─────────────────────────────────────
-const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, spansMonth, usedFrac, color, onMoveUp, onMoveDown, onMoveToOtherStream, onComplete, onRemove, onUpdate, matPrices, isSaving }) {
+const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, spansMonth, usedFrac, color, onMoveUp, onMoveDown, onMoveToOtherStream, onRemove, onUpdate, matPrices, isSaving }) {
   const [showPortal, setShowPortal] = useState(false)
   const [showBuild, setShowBuild] = useState(false)
   const [showCrmNotes, setShowCrmNotes] = useState(false)
@@ -544,10 +546,12 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
           {order.portalToken ? '🔗 Portal' : 'Portal'}
           {order.portalToken && tpDone < tpTotal && <span style={{ marginLeft: 4, fontSize: 9, color: '#d97706' }}>{tpDone}/{tpTotal}</span>}
         </button>
-        <button onClick={() => { if (confirm(`Mark "${order.name || 'this order'}" complete and remove it from the queue?`)) onComplete() }}
-          style={{ ...btn, padding: '4px 12px', fontSize: 11, background: '#f0fdf4', color: '#166534', borderColor: '#bbf7d0' }}>
-          ✓ Complete
-        </button>
+        {(parseFloat(order.pctDone) || 0) < 100 && (
+          <button onClick={() => { if (confirm(`Mark "${order.name || 'this order'}" finished? It'll move into the completed section.`)) onUpdate(order.id, { pctDone: 100 }) }}
+            style={{ ...btn, padding: '4px 12px', fontSize: 11, background: '#f0fdf4', color: '#166534', borderColor: '#bbf7d0' }}>
+            ✓ Mark finished
+          </button>
+        )}
         <button onClick={() => { if (confirm(`Delete "${order.name || 'this order'}" entirely?`)) onRemove() }}
           style={{ ...btn, padding: '4px 8px', fontSize: 11, color: '#b91c1c', borderColor: '#fca5a5' }}>×</button>
       </div>
@@ -700,7 +704,7 @@ const OrderCard = memo(function OrderCard({ order, stream, idx, projectedMonth, 
   );
 });
 
-function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo, setAddingTo, onAdd, onMoveUp, onMoveDown, onMoveToOtherStream, onComplete, onRemove, onUpdate, complexThreshold, matPrices, isSaving }) {
+function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo, setAddingTo, onAdd, onMoveUp, onMoveDown, onMoveToOtherStream, onRemove, onUpdate, complexThreshold, matPrices, isSaving }) {
   const [showCompleted, setShowCompleted] = useState(false);
   const activeOrders = orders.filter(o => (parseFloat(o.pctDone)||0) < 100);
   const completedOrders = orders.filter(o => (parseFloat(o.pctDone)||0) >= 100);
@@ -742,7 +746,6 @@ function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo
               onMoveUp={() => onMoveUp(stream, o.id)}
               onMoveDown={() => onMoveDown(stream, o.id)}
               onMoveToOtherStream={() => onMoveToOtherStream(stream, o.id)}
-              onComplete={() => onComplete(stream, o.id)}
               onRemove={() => onRemove(stream, o.id)}
               onUpdate={(id, updates) => onUpdate(stream, id, updates)} />
           );
@@ -763,7 +766,6 @@ function StreamSection({ title, color, stream, orders, scheduled, lead, addingTo
                   onMoveUp={() => onMoveUp(stream, o.id)}
                   onMoveDown={() => onMoveDown(stream, o.id)}
                   onMoveToOtherStream={() => onMoveToOtherStream(stream, o.id)}
-                  onComplete={() => onComplete(stream, o.id)}
                   onRemove={() => onRemove(stream, o.id)}
                   onUpdate={(id, updates) => onUpdate(stream, id, updates)} />
               );
@@ -1398,13 +1400,13 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
           orders={simpleOrders} scheduled={scheduledSimple} lead={simpleLead}
           addingTo={addingTo} setAddingTo={setAddingTo}
           onAdd={addOrder} onMoveUp={moveUp} onMoveDown={moveDown} onMoveToOtherStream={moveToOtherStream}
-          onComplete={removeOrder} onRemove={removeOrder} onUpdate={updateOrder} complexThreshold={complexThreshold} matPrices={matPrices} isSaving={saving}/>
+          onRemove={removeOrder} onUpdate={updateOrder} complexThreshold={complexThreshold} matPrices={matPrices} isSaving={saving}/>
 
         <StreamSection title="Complex builds" color="#7F77DD" stream="complex"
           orders={complexOrders} scheduled={scheduledComplex} lead={complexLead}
           addingTo={addingTo} setAddingTo={setAddingTo}
           onAdd={addOrder} onMoveUp={moveUp} onMoveDown={moveDown} onMoveToOtherStream={moveToOtherStream}
-          onComplete={removeOrder} onRemove={removeOrder} onUpdate={updateOrder} complexThreshold={complexThreshold} matPrices={matPrices} isSaving={saving}/>
+          onRemove={removeOrder} onUpdate={updateOrder} complexThreshold={complexThreshold} matPrices={matPrices} isSaving={saving}/>
 
         {/* Finance stream — unchanged */}
         <div style={{ background: '#fff', border: '0.5px solid #ddd', borderRadius: 8, marginBottom: '1rem', borderTop: '3px solid #BA7517', overflow: 'hidden' }}>
@@ -1440,7 +1442,6 @@ export default function Queue({ activeKeys: propActiveKeys, workingDays: propWor
                 projectedMonth={null} spansMonth={false} color="#BA7517"
                 onMoveUp={() => moveUp('finance', idx)}
                 onMoveDown={() => moveDown('finance', idx)}
-                onComplete={() => removeOrder('finance', o.id)}
                 onRemove={() => removeOrder('finance', o.id)}
                 onUpdate={(id, updates) => updateOrder('finance', id, updates)} />
             ))}
